@@ -92,6 +92,13 @@ def test_customer_service_cannot_read_costs_or_margin(client):
     # Costs are write-only and expose no GET endpoint.  Margin is the
     # financial read endpoint and must reject customer-service credentials.
     assert client.get(SKU_COSTS_PATH.format(sku_id=sku_id), headers=service).status_code == 405
+    write = client.post(
+        SKU_COSTS_PATH.format(sku_id=sku_id),
+        headers=service,
+        json={"purchase_cost": 1, "packaging_cost": 1, "shipping_subsidy": 1, "platform_fee": 1, "marketing_allocation": 1, "after_sales_loss": 1},
+    )
+    assert write.status_code == 403
+    assert error_detail(write)["code"] == "permission_denied"
     response = client.get(SKU_MARGIN_PATH.format(sku_id=sku_id), headers=service)
     assert response.status_code == 403
     assert error_detail(response)["code"] == "permission_denied"
