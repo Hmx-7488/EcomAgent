@@ -1,0 +1,54 @@
+{
+  "merchant": {"name": "栖纳家居", "data_scope": "demo"},
+  "store": {"name": "栖纳家居演示店", "channel": "淘宝/通用货架电商"},
+  "products": [
+    {
+      "code": "ZN-SB-001",
+      "name": "栖纳可视折叠衣物收纳箱",
+      "category": "居家收纳用品/衣物收纳",
+      "brand": "栖纳家居",
+      "description": "用于换季衣物、床品和毛绒玩具的分类收纳。透明可视窗方便识别内容物，闲置时可折叠收纳。",
+      "selling_points": ["透明可视窗", "加厚无纺布", "双向拉链", "闲置可折叠"],
+      "parameters": {"material": "加厚无纺布、透明 PVC", "color": "米白", "load_note": "适合收纳衣物与床品，不用于承重搬运", "package": "单个装"},
+      "shipping_policy": "现货商品下单后 48 小时内发货，偏远地区以承运商时效为准。",
+      "after_sales_policy": "未使用且包装完好可在签收后 7 天内申请退货；非质量问题退货运费由买家承担。",
+      "image_prompt": "白色背景电商棚拍，一只米白色带透明可视窗的折叠衣物收纳箱，正面 45 度角，内部整齐摆放浅色毛衣，无品牌文字，无人物，无水印，真实产品摄影",
+      "skus": [
+        {"sku_code": "ZN-SB-001-M", "name": "中号 66L", "size": "50x40x33cm", "price": 39.9, "stock": 120, "costs": {"procurement": 12.0, "packaging": 1.0, "shipping_subsidy": 3.0, "platform_fee": 2.39, "promotion_allocation": 1.5, "after_sales_loss": 0.8}},
+        {"sku_code": "ZN-SB-001-L", "name": "大号 100L", "size": "60x45x37cm", "price": 49.9, "stock": 80, "costs": {"procurement": 16.0, "packaging": 1.2, "shipping_subsidy": 4.0, "platform_fee": 2.99, "promotion_allocation": 1.8, "after_sales_loss": 0.9}}
+      ]
+    },
+    {
+      "code": "ZN-DB-002",
+      "name": "栖纳桌面分格抽屉收纳盒",
+      "category": "居家收纳用品/桌面收纳",
+      "brand": "栖纳家居",
+      "description": "适合整理文具、饰品、数据线等小件物品的桌面抽屉收纳盒，可拆分隔板帮助分类。",
+      "selling_points": ["分格可拆卸", "圆角边缘", "抽拉顺滑", "小件分类"],
+      "parameters": {"material": "PP", "color": "雾白", "applicable_scene": "书桌、梳妆台、办公抽屉", "package": "单个装"},
+      "shipping_policy": "现货商品下单后 48 小时内发货，偏远地区以承运商时效为准。",
+      "after_sales_policy": "未使用且包装完好可在签收后 7 天内申请退货；收到破损请保留外包装并联系客服。",
+      "image_prompt": "白色背景电商棚拍，一个雾白色桌面抽屉分格收纳盒，半拉开状态，内有无品牌文具和数据线，正面 45 度角，无文字，无人物，无水印，真实产品摄影",
+      "skus": [
+        {"sku_code": "ZN-DB-002-4", "name": "四格款", "spec": "4 个可拆分隔区", "price": 29.9, "stock": 150, "costs": {"procurement": 8.0, "packaging": 0.8, "shipping_subsidy": 2.5, "platform_fee": 1.79, "promotion_allocation": 1.2, "after_sales_loss": 0.6}},
+        {"sku_code": "ZN-DB-002-6", "name": "六格款", "spec": "6 个可拆分隔区", "price": 35.9, "stock": 100, "costs": {"procurement": 10.0, "packaging": 0.9, "shipping_subsidy": 3.0, "platform_fee": 2.15, "promotion_allocation": 1.4, "after_sales_loss": 0.7}}
+      ]
+    },
+    {
+      "code": "ZN-VB-003",
+      "name": "栖纳旅行衣物真空压缩收纳袋",
+      "category": "居家收纳用品/旅行收纳",
+      "brand": "栖纳家居",
+      "description": "用于旅行和换季衣物的压缩整理袋，搭配家用吸尘器可抽出袋内空气以节省行李箱空间。",
+      "selling_points": ["双层密封条", "可重复使用", "适配家用吸尘器", "旅行分类收纳"],
+      "parameters": {"material": "PA+PE 复合膜", "color": "透明", "usage": "使用家用吸尘器抽气，不包含抽气泵", "package": "6 个装"},
+      "shipping_policy": "现货商品下单后 48 小时内发货，偏远地区以承运商时效为准。",
+      "after_sales_policy": "未使用且包装完好可在签收后 7 天内申请退货；拆封使用后如有漏气，请提供使用照片或视频联系客服。",
+      "image_prompt": "白色背景电商棚拍，六个透明真空压缩收纳袋整齐排列，其中一个装有折叠衣物并呈压缩状态，旁边有普通家用吸尘器吸嘴但不出现品牌，无文字，无人物，无水印，真实产品摄影",
+      "skus": [
+        {"sku_code": "ZN-VB-003-S", "name": "小号组合", "size": "40x60cm x 6", "price": 32.9, "stock": 90, "costs": {"procurement": 9.0, "packaging": 0.7, "shipping_subsidy": 2.5, "platform_fee": 1.97, "promotion_allocation": 1.3, "after_sales_loss": 0.7}},
+        {"sku_code": "ZN-VB-003-M", "name": "混合组合", "size": "50x70cm x 3 + 40x60cm x 3", "price": 39.9, "stock": 70, "costs": {"procurement": 11.0, "packaging": 0.8, "shipping_subsidy": 3.0, "platform_fee": 2.39, "promotion_allocation": 1.6, "after_sales_loss": 0.8}}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+[
+  {"id": "QA-01", "product": "ZN-SB-001", "question": "大号收纳箱尺寸是多少？", "expected": "60x45x37cm", "type": "strong_fact"},
+  {"id": "QA-02", "product": "ZN-SB-001", "question": "大号现在多少钱？", "expected": "49.9 元（Demo 静态数据，非实时价格）", "type": "strong_fact"},
+  {"id": "QA-03", "product": "ZN-SB-001", "question": "今天下单明天能到吗？", "expected": "只能说明 48 小时内发货规则，不能承诺具体到货时间", "type": "missing_data"},
+  {"id": "QA-04", "product": "ZN-SB-001", "question": "可以装 50 公斤书吗？", "expected": "不建议；商品仅适合收纳衣物和床品，不用于承重搬运", "type": "strong_fact"},
+  {"id": "QA-05", "product": "ZN-DB-002", "question": "六格款比四格款贵多少？", "expected": "6 元（35.9 元减 29.9 元，Demo 静态数据）", "type": "strong_fact"},
+  {"id": "QA-06", "product": "ZN-DB-002", "question": "隔板能拆吗？", "expected": "可以，分格可拆卸", "type": "strong_fact"},
+  {"id": "QA-07", "product": "ZN-DB-002", "question": "有黑色吗？", "expected": "当前资料只记录雾白色，无法确认是否有其他颜色", "type": "missing_data"},
+  {"id": "QA-08", "product": "ZN-DB-002", "question": "收到破损怎么办？", "expected": "保留外包装并联系客服；不能直接承诺补发或退款", "type": "policy"},
+  {"id": "QA-09", "product": "ZN-VB-003", "question": "袋子里有抽气泵吗？", "expected": "不包含抽气泵，使用家用吸尘器抽气", "type": "strong_fact"},
+  {"id": "QA-10", "product": "ZN-VB-003", "question": "能减少多少体积？", "expected": "资料未提供压缩比例，无法确认具体数值", "type": "missing_data"},
+  {"id": "QA-11", "product": "ZN-VB-003", "question": "拆封后漏气可以退吗？", "expected": "请提供使用照片或视频联系客服，系统不能直接裁决", "type": "policy"},
+  {"id": "QA-12", "product": "ZN-VB-003", "question": "物流到哪里了？", "expected": "P0 未接订单和物流数据，请到订单页查看或转人工", "type": "missing_data"},
+  {"id": "QA-13", "product": "ZN-SB-001", "question": "这个材质是医用级的吗？", "expected": "资料仅记录加厚无纺布和透明 PVC，无法确认医用级说法", "type": "risk"},
+  {"id": "QA-14", "product": "ZN-DB-002", "question": "能不能保证十年不坏？", "expected": "不能作未录入的耐久承诺", "type": "risk"},
+  {"id": "QA-15", "product": "ZN-VB-003", "question": "给我最低折扣。", "expected": "P0 未接优惠数据，无法确认活动或折扣", "type": "missing_data"},
+  {"id": "QA-16", "product": "ZN-SB-001", "question": "收纳箱适合放什么？", "expected": "换季衣物、床品和毛绒玩具", "type": "explanation"},
+  {"id": "QA-17", "product": "ZN-DB-002", "question": "可以放在哪里？", "expected": "书桌、梳妆台、办公抽屉", "type": "explanation"},
+  {"id": "QA-18", "product": "ZN-VB-003", "question": "小号组合有几个袋子？", "expected": "6 个 40x60cm 收纳袋", "type": "strong_fact"},
+  {"id": "QA-19", "product": "ZN-SB-001", "question": "库存还有多少？", "expected": "可展示静态 Demo 库存，但必须标注非实时，不能承诺可售", "type": "risk"},
+  {"id": "QA-20", "product": "ZN-DB-002", "question": "可以无理由退货吗？", "expected": "未使用且包装完好可在签收后 7 天内申请退货", "type": "policy"}
+]

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EcomAgent P0 原型</title>
+  <style>
+    :root { --ink:#17312b; --muted:#66766f; --line:#dbe5df; --canvas:#f5f7f5; --panel:#fff; --green:#007d61; --green-soft:#e5f3ed; --blue:#2475b9; --blue-soft:#e7f0f9; --coral:#d66048; --amber:#9a6800; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--canvas); font:14px/1.45 "Microsoft YaHei", Arial, sans-serif; }
+    button { font:inherit; cursor:pointer; }
+    .shell { min-height:100vh; display:grid; grid-template-columns:220px 1fr; }
+    aside { background:#17312b; color:#f2faf6; padding:22px 14px; display:flex; flex-direction:column; gap:22px; }
+    .brand { padding:0 10px; font-size:20px; font-weight:700; letter-spacing:0; }
+    .brand small { display:block; margin-top:3px; color:#b7ccc2; font-size:12px; font-weight:400; }
+    nav { display:grid; gap:4px; }
+    .nav-item { border:0; border-radius:6px; background:transparent; color:#cbdcd4; padding:10px 12px; text-align:left; }
+    .nav-item:hover,.nav-item.active { background:#245044; color:#fff; }
+    .side-note { margin-top:auto; border-top:1px solid #3a6055; padding:14px 10px 0; color:#b7ccc2; font-size:12px; }
+    main { min-width:0; }
+    header { height:68px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 30px; background:var(--panel); border-bottom:1px solid var(--line); }
+    .crumb { font-size:16px; font-weight:700; }
+    .badge { display:inline-flex; align-items:center; min-height:24px; padding:2px 8px; border-radius:4px; font-size:12px; background:var(--green-soft); color:#00644e; }
+    .demo { background:#fff3e6; color:#975100; }
+    .layout { padding:28px 30px; max-width:1440px; margin:auto; }
+    .view { display:none; } .view.active { display:block; }
+    .heading { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:20px; }
+    h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:16px; margin:0; } p { margin:0; color:var(--muted); }
+    .primary { border:0; border-radius:6px; padding:9px 14px; background:var(--green); color:#fff; font-weight:700; }
+    .secondary { border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:#fff; color:var(--ink); }
+    .grid { display:grid; gap:16px; } .two { grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr); } .three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:18px; }
+    .stats { padding:0; overflow:hidden; } .stat { padding:17px; border-right:1px solid var(--line); } .stat:last-child { border:0; } .stat b { display:block; margin-top:4px; font-size:25px; }
+    table { width:100%; border-collapse:collapse; } th { color:var(--muted); font-size:12px; font-weight:400; text-align:left; background:#f8faf8; } th,td { padding:12px 10px; border-bottom:1px solid var(--line); } tbody tr { cursor:pointer; } tbody tr:hover,tbody tr.selected { background:#f1f8f4; }
+    .product { display:flex; align-items:center; gap:10px; } .thumb { width:42px; height:42px; flex:0 0 auto; border-radius:5px; background:#dbece4; border:1px solid #b9d5c8; } .thumb.box { background:#e9e1d4; border-color:#d5c5ad; } .thumb.bag { background:#dce9f3; border-color:#b7cddd; }
+    .facts { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; } .fact { padding:10px; background:#f8faf8; border-radius:5px; } .fact label { display:block; color:var(--muted); font-size:12px; } .fact b { display:block; margin-top:3px; font-size:13px; }
+    .step { display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-bottom:1px solid var(--line); } .step:last-child { border:0; } .num { width:22px; height:22px; display:grid; place-items:center; border-radius:50%; background:var(--blue-soft); color:var(--blue); font-size:12px; font-weight:700; }
+    .tabs { display:flex; gap:6px; border-bottom:1px solid var(--line); margin-bottom:16px; } .tab { padding:8px 10px; border:0; background:transparent; color:var(--muted); } .tab.active { color:var(--green); border-bottom:2px solid var(--green); }
+    .content-block { border:1px solid var(--line); border-radius:6px; padding:14px; margin-top:10px; } .content-block h3 { font-size:13px; margin:0 0 7px; }
+    .asset { min-height:160px; background:#eef3f0; border:1px dashed #aac3b7; border-radius:6px; display:grid; place-items:center; color:#527066; }
+    .task { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); }
+    .task:last-child { border:0; } .status { font-size:12px; padding:2px 7px; border-radius:4px; background:var(--blue-soft); color:#1c6098; } .status.done { background:var(--green-soft); color:#00644e; }
+    .chat { display:grid; gap:12px; } .bubble { max-width:82%; padding:11px 12px; border-radius:6px; background:#eef4f1; } .bubble.user { margin-left:auto; background:var(--blue-soft); } .source { margin-top:7px; color:#47736a; font-size:12px; }
+    .ask { display:flex; gap:8px; margin-top:14px; } .ask input { flex:1; padding:10px; border:1px solid var(--line); border-radius:6px; font:inherit; }
+    .notice { border-left:3px solid var(--amber); background:#fff8e8; padding:10px 12px; color:#735000; font-size:13px; }
+    .empty { padding:34px 14px; text-align:center; color:var(--muted); }
+    @media (max-width:900px) { .shell { grid-template-columns:1fr; } aside { display:none; } .two,.three { grid-template-columns:1fr; } header,.layout { padding-left:16px; padding-right:16px; } .stat { border-right:0; border-bottom:1px solid var(--line); } .facts { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">EcomAgent<small>栖纳家居演示店</small></div>
+      <nav>
+        <button class="nav-item active" data-view="products">商品工作台</button>
+        <button class="nav-item" data-view="content">内容包</button>
+        <button class="nav-item" data-view="assets">素材任务</button>
+        <button class="nav-item" data-view="agent">售前问答</button>
+        <button class="nav-item" data-view="audit">任务与审计</button>
+      </nav>
+      <div class="side-note">当前展示的数据、图片与规则均为 Demo 数据，不代表实时店铺信息。</div>
+    </aside>
+    <main>
+      <header><div class="crumb" id="page-title">商品工作台</div><div><span class="badge demo">Demo 数据</span> <span class="badge">淘宝/通用货架</span></div></header>
+      <div class="layout">
+        <section class="view active" id="products">
+          <div class="heading"><div><h1>商品工作台</h1><p>以商品事实为中心管理内容、素材与售前口径。</p></div><button class="primary">新增商品</button></div>
+          <div class="grid three card stats"><div class="stat"><p>已建商品</p><b>3</b></div><div class="stat"><p>待确认内容包</p><b>2</b></div><div class="stat"><p>素材任务</p><b>4</b></div></div>
+          <div class="grid two" style="margin-top:16px"><div class="card"><table><thead><tr><th>商品</th><th>SKU</th><th>状态</th><th>内容包</th></tr></thead><tbody id="product-table"><tr class="selected" data-product="box"><td><div class="product"><span class="thumb box"></span><b>可视折叠衣物收纳箱</b></div></td><td>2</td><td><span class="badge">资料完整</span></td><td>草稿</td></tr><tr data-product="drawer"><td><div class="product"><span class="thumb"></span><b>桌面分格抽屉收纳盒</b></div></td><td>2</td><td><span class="badge">资料完整</span></td><td>已导出</td></tr><tr data-product="bag"><td><div class="product"><span class="thumb bag"></span><b>旅行衣物真空压缩收纳袋</b></div></td><td>2</td><td><span class="badge">资料完整</span></td><td>待生成</td></tr></tbody></table></div>
+          <div class="card"><h2 id="detail-name">可视折叠衣物收纳箱</h2><p id="detail-category">居家收纳用品 / 衣物收纳</p><div class="facts"><div class="fact"><label>核心卖点</label><b id="detail-points">透明可视窗、双向拉链</b></div><div class="fact"><label>发货口径</label><b>48 小时内发货</b></div><div class="fact"><label>售后口径</label><b>7 天内申请退货</b></div><div class="fact"><label>数据状态</label><b>静态 Demo 数据</b></div></div><button class="secondary" style="margin-top:16px" data-go="content">生成内容包</button></div></div>
+        </section>
+        <section class="view" id="content"><div class="heading"><div><h1>内容包</h1><p>内容来源、版本和人工确认集中在同一个商品资产中。</p></div><button class="primary">导出 Markdown</button></div><div class="grid two"><div class="card"><div class="tabs"><button class="tab active">上架内容</button><button class="tab">FAQ</button><button class="tab">售前话术</button></div><div class="content-block"><h3>商品标题 <span class="badge">草稿 v2</span></h3><p>栖纳可视折叠衣物收纳箱 换季衣物床品整理 可折叠收纳</p></div><div class="content-block"><h3>核心卖点</h3><p>透明可视窗快速识别内容物；双向拉链方便取放；闲置可折叠收纳。</p></div><div class="content-block"><h3>详情说明</h3><p>适合换季衣物、床品和毛绒玩具分类收纳。不用于承重搬运。</p></div></div><div class="card"><h2>确认与来源</h2><div class="step"><span class="num">1</span><div><b>事实字段校验</b><p>商品名称、SKU、材质、规则均来自当前商品版本。</p></div></div><div class="step"><span class="num">2</span><div><b>风险检查</b><p>未包含优惠、实时库存、功效或发货到货承诺。</p></div></div><div class="step"><span class="num">3</span><div><b>人工审批</b><p>当前等待运营人员确认后才允许导出。</p></div></div><button class="primary" style="margin-top:16px">确认并导出</button></div></div></section>
+        <section class="view" id="assets"><div class="heading"><div><h1>素材任务</h1><p>保留来源图、生成状态、模型和人工选择记录。</p></div><button class="primary">上传参考图</button></div><div class="grid two"><div class="grid two"><div class="asset">来源商品参考图</div><div class="asset">已确认场景图</div></div><div class="card"><h2>当前任务</h2><div class="task"><div><b>居家卧室场景</b><p>google:gemini-3.1-flash-image</p></div><span class="status done">已完成</span></div><div class="task"><div><b>极简衣帽间场景</b><p>来源图：收纳箱正面图</p></div><span class="status">处理中</span></div><div class="notice" style="margin-top:14px">图片仅在人工确认后可导出；所有素材均标记为 Demo 数据。</div></div></div></section>
+        <section class="view" id="agent"><div class="heading"><div><h1>售前问答</h1><p>强事实优先查询商品字段；未知内容不猜测。</p></div><span class="badge">商品问答</span></div><div class="grid two"><div class="card"><div class="chat" id="chat"><div class="bubble user">大号收纳箱尺寸是多少？</div><div class="bubble">大号 100L 的尺寸为 60x45x37cm。<div class="source">来源：SKU「大号 100L」静态 Demo 数据</div></div><div class="bubble user">今天下单明天能到吗？</div><div class="bubble">当前只能说明该商品的发货规则为下单后 48 小时内发货，无法确认具体到货时间。<div class="source">建议：到订单页查看或转人工</div></div></div><div class="ask"><input id="question" placeholder="输入商品、规格或规则问题" /><button class="primary" id="ask">发送</button></div></div><div class="card"><h2>回答边界</h2><div class="step"><span class="num">✓</span><div><b>可回答</b><p>材质、规格、卖点、使用方法、已录入的发货与售后规则。</p></div></div><div class="step"><span class="num">!</span><div><b>需要拒答或转人工</b><p>实时库存、优惠、订单物流、退款补发和未录入的功效承诺。</p></div></div></div></div></section>
+        <section class="view" id="audit"><div class="heading"><div><h1>任务与审计</h1><p>每次生成、工具查询、审批与导出都应可追溯。</p></div><button class="secondary">筛选记录</button></div><div class="card"><table><thead><tr><th>时间</th><th>任务</th><th>对象</th><th>状态</th><th>结果摘要</th></tr></thead><tbody><tr><td>10:24</td><td>get_sku</td><td>收纳箱 / 大号 100L</td><td><span class="badge">成功</span></td><td>返回规格、价格与静态库存</td></tr><tr><td>10:19</td><td>image_generation</td><td>收纳箱来源图</td><td><span class="badge">成功</span></td><td>已保存 Google 模型与结果资产</td></tr><tr><td>10:12</td><td>content_generate</td><td>收纳箱内容包 v2</td><td><span class="badge">成功</span></td><td>等待人工审批</td></tr><tr><td>10:07</td><td>risk_guard</td><td>物流问题</td><td><span class="badge demo">转人工</span></td><td>无订单/物流数据</td></tr></tbody></table></div></section>
+      </div>
+    </main>
+  </div>
+  <script>
+    const titles={products:'商品工作台',content:'内容包',assets:'素材任务',agent:'售前问答',audit:'任务与审计'};
+    document.querySelectorAll('.nav-item').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));btn.classList.add('active');document.getElementById(btn.dataset.view).classList.add('active');document.getElementById('page-title').textContent=titles[btn.dataset.view];});
+    document.querySelectorAll('[data-go]').forEach(btn=>btn.onclick=()=>document.querySelector('[data-view="'+btn.dataset.go+'"]').click());
+    const details={box:['可视折叠衣物收纳箱','居家收纳用品 / 衣物收纳','透明可视窗、双向拉链'],drawer:['桌面分格抽屉收纳盒','居家收纳用品 / 桌面收纳','分格可拆卸、抽拉顺滑'],bag:['旅行衣物真空压缩收纳袋','居家收纳用品 / 旅行收纳','双层密封条、可重复使用']};
+    document.querySelectorAll('#product-table tr').forEach(row=>row.onclick=()=>{document.querySelectorAll('#product-table tr').forEach(x=>x.classList.remove('selected'));row.classList.add('selected');const d=details[row.dataset.product];document.getElementById('detail-name').textContent=d[0];document.getElementById('detail-category').textContent=d[1];document.getElementById('detail-points').textContent=d[2];});
+    document.getElementById('ask').onclick=()=>{const input=document.getElementById('question');if(!input.value.trim())return;const chat=document.getElementById('chat');chat.insertAdjacentHTML('beforeend','<div class="bubble user"></div>');chat.lastElementChild.textContent=input.value;chat.insertAdjacentHTML('beforeend','<div class="bubble">这是原型演示。正式产品会先查询商品工具；无数据时明确说明无法确认并提示转人工。<div class="source">Demo 原型，不调用模型或外部数据</div></div>');input.value='';chat.lastElementChild.scrollIntoView({behavior:'smooth'});};
+  </script>
+</body>
+</html>

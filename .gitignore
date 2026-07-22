@@ -1,0 +1,23 @@
+# Local runtime secrets and development artifacts
+backend/.env
+backend/.venv/
+backend/uploads/
+backend/ecomagent.db
+
+# Python tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# Frontend tooling
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Local AI tooling and task artifacts
+.claude/
+.codex/
+.umadev/
+.tmp_*/
+团队实训周报-*.docx

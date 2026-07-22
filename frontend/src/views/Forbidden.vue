@@ -1,0 +1,2 @@
+<template><main class="forbidden"><section class="panel"><el-result icon="warning" title="无权访问" sub-title="此账号没有后台商品事实的访问权限。顾客仅可使用独立咨询入口；客服不能编辑商品、成本或毛利。"><template #extra><el-button type="primary" @click="back">返回</el-button></template></el-result></section></main></template>
+<script setup lang="ts">import { useRouter } from "vue-router"; const router=useRouter(); function back(){router.push("/login")}</script><style scoped>.forbidden{min-height:100vh;display:grid;place-items:center;padding:20px}.panel{width:min(620px,100%)}</style>
