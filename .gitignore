@@ -3,6 +3,7 @@ backend/.env
 backend/.venv/
 backend/uploads/
 backend/ecomagent.db
+docs/prototype.zip
 
 # Python tooling
 __pycache__/
