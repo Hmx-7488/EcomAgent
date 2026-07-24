@@ -3,7 +3,7 @@
 import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.database import Base
@@ -38,6 +38,7 @@ class Order(Base):
 
 class OrderItem(Base):
     __tablename__ = "order_items"
+    __table_args__ = (Index("ix_order_items_order_id", "order_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     order_id: Mapped[int] = mapped_column(
@@ -53,6 +54,7 @@ class OrderItem(Base):
 
 class AfterSalesRule(Base):
     __tablename__ = "after_sales_rules"
+    __table_args__ = (Index("ix_after_sales_rules_product_id", "product_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     product_id: Mapped[int] = mapped_column(

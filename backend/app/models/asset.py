@@ -3,7 +3,7 @@
 import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..core.database import Base
@@ -13,6 +13,7 @@ class Asset(Base):
     """Uploaded source images and generated assets."""
 
     __tablename__ = "assets"
+    __table_args__ = (Index("ix_assets_product_id", "product_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     product_id: Mapped[int] = mapped_column(
@@ -39,6 +40,7 @@ class ImageGenerationTask(Base):
     """Async image generation task tracker."""
 
     __tablename__ = "image_generation_tasks"
+    __table_args__ = (Index("ix_image_generation_tasks_product_id", "product_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     product_id: Mapped[int] = mapped_column(

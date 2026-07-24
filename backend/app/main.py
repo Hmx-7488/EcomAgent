@@ -1,6 +1,7 @@
 """EcomAgent Backend — FastAPI application entry point."""
 
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -15,19 +16,16 @@ from .api.products import router as product_router
 from .api.auth import router as auth_router
 from .api.costs import router as cost_router
 from .core.config import settings
-from .core.database import Base, engine
+from .core.database import engine
+from .core.schema_contract import assert_schema_current
 
-# Import all models so create_all detects every table
+# Import all models so the read-only runtime schema contract sees every table.
 import app.models.product  # noqa: F401
 import app.models.content  # noqa: F401
 import app.models.order    # noqa: F401
 import app.models.asset    # noqa: F401
 import app.models.user     # noqa: F401
 import app.models.cost     # noqa: F401
-
-# Create all tables on startup (MVP convenience; use Alembic migrations in production)
-Base.metadata.create_all(bind=engine)
-
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Simple in-memory rate limiter — 100 requests per minute per IP."""
@@ -80,11 +78,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Normal runtime validates, but never mutates, the database schema."""
+    assert_schema_current(engine)
+    yield
+
+
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # CORS — allow frontend dev server (must be outermost for preflight handling)

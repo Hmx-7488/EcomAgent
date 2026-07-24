@@ -3,7 +3,7 @@
 import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.database import Base
@@ -11,6 +11,7 @@ from ..core.database import Base
 
 class GeneratedContent(Base):
     __tablename__ = "generated_contents"
+    __table_args__ = (Index("ix_generated_contents_product_id", "product_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     product_id: Mapped[int] = mapped_column(
@@ -45,6 +46,9 @@ class ContentVersion(Base):
     """Append-only content package payload; approved history is never overwritten."""
 
     __tablename__ = "content_versions"
+    __table_args__ = (
+        UniqueConstraint("package_id", "version_no", name="uq_content_package_version"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     package_id: Mapped[int] = mapped_column(Integer, ForeignKey("content_packages.id"), nullable=False)
@@ -100,6 +104,7 @@ class Conversation(Base):
 
 class ToolCallLog(Base):
     __tablename__ = "tool_call_logs"
+    __table_args__ = (Index("ix_tool_call_logs_conversation_id", "conversation_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     conversation_id: Mapped[Optional[int]] = mapped_column(
