@@ -1,91 +1,92 @@
-﻿"""Image generation API routes."""
-
-from typing import Optional
-
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+"""P0 controlled image task APIs; they never publish to external platforms."""
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
-
 from ..core.database import get_db
-from ..schemas.asset import (
-    AssetListResponse,
-    AssetRead,
-    ImageGenerateRequest,
-    ImageTaskCreateResponse,
-    ImageTaskRead,
-)
+from ..core.security import require_roles
+from ..models.asset import Asset, ImageGenerationTask
+from ..models.product import Product
+from ..models.user import User
+from ..schemas.asset import AssetListResponse, AssetRead, ImageExportRead, ImageGenerateRequest, ImageTaskCreateResponse, ImageTaskRead, ImageTransitionRequest
 from ..services import image_service
+from ..services.content_service import _audit
 
 router = APIRouter(prefix="/api/images", tags=["images"])
 
+def _task(db: Session, task_id: int) -> ImageGenerationTask:
+    item = db.get(ImageGenerationTask, task_id)
+    if not item: raise HTTPException(404, detail={"code":"not_found","message":"Image task not found"})
+    return item
+def _error(exc: Exception):
+    mapping = {"approved_product_required":(409,"approved_product_required","Only approved product facts can be used"),
+               "retry_not_available":(409,"retry_not_available","Task is not in a retryable state"),
+               "completed_image_required":(409,"completed_image_required","Completed image is required for confirmation"),
+               "illegal_status_transition":(409,"illegal_status_transition","Illegal approval status transition"),
+               "rejection_reason_required":(422,"validation_error","Rejection reason is required"),
+               "approval_required":(409,"approval_required","Approved confirmed image is required for export")}
+    status, code, message = mapping.get(str(exc),(400,"image_error","Image operation failed"))
+    raise HTTPException(status, detail={"code":code,"message":message})
 
-@router.post("/upload", response_model=AssetRead, status_code=201)
-def api_upload_image(
-    product_id: int = Form(...),
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-):
-    """Upload a product source image for generation."""
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
+@router.post("/reference", response_model=AssetRead, status_code=201)
+def reference(product_id: int=Form(...), file: UploadFile=File(...), db: Session=Depends(get_db), user: User=Depends(require_roles("admin","operator_content"))):
+    product = db.get(Product, product_id)
+    if not product or product.status != "approved": raise HTTPException(409, detail={"code":"approved_product_required","message":"Only approved product facts can be used"})
+    if not file.filename or not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(422, detail={"code":"validation_error","message":"An image reference is required"})
+    try: asset = image_service.save_upload(db, product_id, file.file.read(), file.filename, "reference")
+    except ValueError as exc: raise HTTPException(422, detail={"code":"validation_error","message":str(exc)})
+    _audit(db, user, "image.reference_uploaded", "media_asset", asset.id, summary="Uploaded reference image"); db.commit(); return asset
 
-    content = file.file.read()
-    if len(content) > 10 * 1024 * 1024:  # 10 MB limit
-        raise HTTPException(status_code=400, detail="Image too large (max 10 MB)")
+@router.get("/reference", response_model=AssetListResponse)
+def list_reference(product_id: int, db: Session=Depends(get_db), _: User=Depends(require_roles("admin","operator_content"))):
+    items = db.query(Asset).filter(Asset.product_id==product_id, Asset.asset_type=="reference").all(); return {"items":items,"total":len(items)}
 
-    asset = image_service.save_upload(db, product_id, content, file.filename)
-    return asset
+@router.post("/tasks", response_model=ImageTaskCreateResponse, status_code=202)
+def create_task(data: ImageGenerateRequest, db: Session=Depends(get_db), user: User=Depends(require_roles("admin","operator_content"))):
+    product = db.get(Product, data.product_id)
+    if not product or product.status != "approved": raise HTTPException(409, detail={"code":"approved_product_required","message":"Only approved product facts can be used"})
+    ref = db.get(Asset, data.reference_asset_id) if data.reference_asset_id else db.query(Asset).filter(Asset.product_id==data.product_id, Asset.asset_type=="reference").order_by(Asset.created_at.desc()).first()
+    if not ref or ref.product_id != data.product_id or ref.asset_type != "reference": raise HTTPException(422, detail={"code":"validation_error","message":"A validated reference image is required"})
+    task = image_service.create_generation_task(db, data.product_id, ref.id, data.style)
+    _audit(db, user, "image.created", "image_task", task.id, after={"status":"pending"}, summary="Created image generation task"); db.commit()
+    # P0 exposes state through a task resource, but this local deployment has
+    # no worker queue. Process once synchronously; adapters remain injectable.
+    task = image_service.process_generation_task(db, task.id)
+    return {"task_id":task.id,"status":task.status}
 
-
-@router.post("/generate", response_model=ImageTaskCreateResponse, status_code=202)
-def api_create_image_task(
-    data: ImageGenerateRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-):
-    """Create an image generation task. Runs asynchronously."""
-    # Get the latest source asset for this product
-    source_assets = image_service.get_product_assets(
-        db, data.product_id, asset_type="source"
-    )
-    if not source_assets:
-        raise HTTPException(
-            status_code=400,
-            detail="No source image uploaded for this product. Upload an image first.",
-        )
-    source_id = source_assets[0].id
-
-    task = image_service.create_generation_task(
-        db, data.product_id, source_id, data.style
-    )
-
-    # Queue async processing
-    background_tasks.add_task(image_service.process_generation_task, db, task.id)
-
-    return ImageTaskCreateResponse(task_id=task.id, status=task.status)
-
-
+@router.get("/tasks", response_model=list[ImageTaskRead])
+def list_tasks(product_id: int|None=None, db: Session=Depends(get_db), _: User=Depends(require_roles("admin","operator_content"))):
+    q=db.query(ImageGenerationTask); return q.filter(ImageGenerationTask.product_id==product_id).all() if product_id else q.all()
 @router.get("/tasks/{task_id}", response_model=ImageTaskRead)
-def api_get_task_status(task_id: int, db: Session = Depends(get_db)):
-    """Poll image generation task status."""
-    task = image_service.get_task_status(db, task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return task
+def get_task(task_id: int, db: Session=Depends(get_db), _: User=Depends(require_roles("admin","operator_content"))): return _task(db, task_id)
 
+@router.post("/tasks/{task_id}/retry", response_model=ImageTaskRead)
+def retry(task_id:int, db:Session=Depends(get_db), user:User=Depends(require_roles("admin","operator_content"))):
+    try:return image_service.retry_task(db,user,_task(db,task_id))
+    except (ValueError,RuntimeError) as exc:_error(exc)
+@router.post("/tasks/{task_id}/confirm", response_model=ImageTaskRead)
+def confirm(task_id:int, db:Session=Depends(get_db), user:User=Depends(require_roles("admin","operator_content"))):
+    try:return image_service.confirm_task(db,user,_task(db,task_id))
+    except (ValueError,RuntimeError) as exc:_error(exc)
+@router.post("/tasks/{task_id}/submit", response_model=ImageTaskRead)
+def submit(task_id:int, db:Session=Depends(get_db), user:User=Depends(require_roles("admin","operator_content"))):
+    try:return image_service.transition_task(db,user,_task(db,task_id),"submit")
+    except (ValueError,RuntimeError) as exc:_error(exc)
+@router.post("/tasks/{task_id}/approve", response_model=ImageTaskRead)
+def approve(task_id:int,data:ImageTransitionRequest,db:Session=Depends(get_db),user:User=Depends(require_roles("admin"))):
+    try:return image_service.transition_task(db,user,_task(db,task_id),"approve",data.reason)
+    except (ValueError,RuntimeError) as exc:_error(exc)
+@router.post("/tasks/{task_id}/reject", response_model=ImageTaskRead)
+def reject(task_id:int,data:ImageTransitionRequest,db:Session=Depends(get_db),user:User=Depends(require_roles("admin"))):
+    try:return image_service.transition_task(db,user,_task(db,task_id),"reject",data.reason)
+    except (ValueError,RuntimeError) as exc:_error(exc)
+@router.post("/tasks/{task_id}/export", response_model=ImageExportRead)
+def export(task_id:int,db:Session=Depends(get_db),user:User=Depends(require_roles("admin"))):
+    try:return image_service.export_task(db,user,_task(db,task_id))
+    except (ValueError,RuntimeError) as exc:_error(exc)
 
+# Legacy aliases retain old service tests but still enforce M2 authorization.
+@router.post("/upload", response_model=AssetRead, status_code=201)
+def upload(product_id:int=Form(...),file:UploadFile=File(...),db:Session=Depends(get_db),user:User=Depends(require_roles("admin","operator_content"))): return reference(product_id,file,db,user)
 @router.get("/assets/{product_id}", response_model=AssetListResponse)
-def api_get_product_assets(
-    product_id: int,
-    asset_type: Optional[str] = None,
-    db: Session = Depends(get_db),
-):
-    """List all assets for a product."""
-    assets = image_service.get_product_assets(
-        db, product_id, asset_type=asset_type
-    )
-    return AssetListResponse(
-        items=[AssetRead.model_validate(a) for a in assets],
-        total=len(assets),
-    )
+def assets(product_id:int, db:Session=Depends(get_db),_:User=Depends(require_roles("admin","operator_content"))):
+    items=image_service.get_product_assets(db,product_id); return {"items":items,"total":len(items)}

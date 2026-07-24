@@ -13,6 +13,9 @@ const router = createRouter({ history: createWebHistory(), routes: [
   { path: "/products/new", component: () => import("../views/ProductEdit.vue"), meta: { roles: ["admin", "operator_content"] } },
   { path: "/products/:id", component: () => import("../views/ProductDetail.vue"), props: true, meta: { roles: ["admin", "operator_content"] } },
   { path: "/products/:id/edit", redirect: (to) => `/products/${to.params.id}` },
+  { path: "/content", component: () => import("../views/ContentWorkspace.vue"), meta: { roles: ["admin", "operator_content"] } },
+  { path: "/image-tasks", component: () => import("../views/ImageTasks.vue"), meta: { roles: ["admin", "operator_content"] } },
+  { path: "/approvals", component: () => import("../views/Approvals.vue"), meta: { roles: ["admin"] } },
   { path: "/:pathMatch(.*)*", redirect: "/forbidden" },
 ] });
 router.beforeEach((to) => {

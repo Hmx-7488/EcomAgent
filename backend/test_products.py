@@ -228,23 +228,18 @@ class TestContentGeneration:
             "selling_points": "UPF50+ 防晒，轻薄透气",
         })
         product_id = resp.json()["id"]
+        assert client.put(f"/api/products/{product_id}", json={"status": "approved"}).status_code == 200
 
-        resp = client.post("/api/content/generate", json={
-            "product_id": product_id,
-            "content_type": "title",
-            "platform": "taobao",
-        })
+        package = client.post("/api/content/packages", json={"product_id": product_id, "payload": {}})
+        assert package.status_code == 201
+        resp = client.post(f"/api/content/packages/{package.json()['id']}/generate", json={"content_type": "title", "platform": "taobao"})
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["content_type"] == "title"
-        assert data["platform"] == "taobao"
-        assert data["content_json"] is not None
+        data = resp.json()["versions"][-1]
+        assert data["task_status"] in {"completed", "no_key"}
+        assert data["provider"]
 
     def test_generate_content_product_not_found(self, client):
-        resp = client.post("/api/content/generate", json={
-            "product_id": 99999,
-            "content_type": "title",
-        })
+        resp = client.post("/api/content/packages", json={"product_id": 99999, "payload": {}})
         assert resp.status_code == 404
 
 

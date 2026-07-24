@@ -79,6 +79,14 @@ class TestPlaceholderResult:
 class TestImageAPI:
     """Integration tests for image generation API endpoints."""
 
+    @staticmethod
+    def _approved_product(client, name, category="服装"):
+        created = client.post("/api/products", json={"name": name, "category": category})
+        assert created.status_code == 201
+        product_id = created.json()["id"]
+        assert client.put(f"/api/products/{product_id}", json={"status": "approved"}).status_code == 200
+        return product_id
+
     def test_upload_no_file(self, client):
         resp = client.post("/api/images/upload")
         assert resp.status_code == 422
@@ -91,69 +99,60 @@ class TestImageAPI:
             data={"product_id": "99999"},
             files={"file": ("test.png", fake_img, "image/png")},
         )
-        assert resp.status_code in (201, 404)  # 404 if product FK enforced
+        assert resp.status_code == 409  # M2 only accepts approved product facts
 
     def test_generate_missing_field(self, client):
-        resp = client.post("/api/images/generate", json={})
+        resp = client.post("/api/images/tasks", json={})
         assert resp.status_code == 422
 
     def test_generate_creates_task(self, client):
-        # Create a product first
-        p_resp = client.post("/api/products", json={
-            "name": "图片测试商品", "category": "服装"
-        })
-        product_id = p_resp.json()["id"]
-        upload = client.post("/api/images/upload", data={"product_id": str(product_id)}, files={"file": ("source.png", io.BytesIO(b"\x89PNG\r\n\x1a\n"), "image/png")})
+        product_id = self._approved_product(client, "图片测试商品")
+        upload = client.post("/api/images/reference", data={"product_id": str(product_id)}, files={"file": ("source.png", io.BytesIO(b"\x89PNG\r\n\x1a\n"), "image/png")})
         assert upload.status_code == 201
 
-        resp = client.post("/api/images/generate", json={
+        resp = client.post("/api/images/tasks", json={
             "product_id": product_id,
             "style": "minimal",
+            "reference_asset_id": upload.json()["id"],
         })
         assert resp.status_code == 202
         data = resp.json()
         assert "task_id" in data
-        assert data["status"] == "pending"
+        assert data["status"] in {"pending", "no_key"}
 
     def test_generate_rejected_without_source_image(self, client):
         """Generation must be rejected if no source image was uploaded first."""
-        p_resp = client.post("/api/products", json={
-            "name": "无源图商品", "category": "数码"
-        })
-        product_id = p_resp.json()["id"]
+        product_id = self._approved_product(client, "无源图商品", "数码")
 
-        resp = client.post("/api/images/generate", json={
+        resp = client.post("/api/images/tasks", json={
             "product_id": product_id,
             "style": "minimal",
         })
-        assert resp.status_code == 400
-        assert resp.json()["detail"]["code"] == "request_error"
-        assert "No source image" in resp.json()["detail"]["message"]
+        assert resp.status_code == 422
+        assert resp.json()["detail"]["code"] == "validation_error"
 
     def test_generate_with_upload_then_generate(self, client):
         """Full flow: upload source → generate → task created."""
         import io
 
-        p_resp = client.post("/api/products", json={
-            "name": "完整流程商品", "category": "美妆"
-        })
-        product_id = p_resp.json()["id"]
-        upload = client.post("/api/images/upload", data={"product_id": str(product_id)}, files={"file": ("source.png", io.BytesIO(b"\x89PNG\r\n\x1a\n"), "image/png")})
+        product_id = self._approved_product(client, "完整流程商品", "美妆")
+        upload = client.post("/api/images/reference", data={"product_id": str(product_id)}, files={"file": ("source.png", io.BytesIO(b"\x89PNG\r\n\x1a\n"), "image/png")})
         assert upload.status_code == 201
 
         # Upload first
         fake_img = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
         upload_resp = client.post(
-            "/api/images/upload",
+            "/api/images/reference",
             data={"product_id": str(product_id)},
             files={"file": ("product.png", fake_img, "image/png")},
         )
         assert upload_resp.status_code == 201
 
         # Then generate — should succeed now
-        gen_resp = client.post("/api/images/generate", json={
+        gen_resp = client.post("/api/images/tasks", json={
             "product_id": product_id,
             "style": "summer",
+            "reference_asset_id": upload_resp.json()["id"],
         })
         assert gen_resp.status_code == 202
         assert "task_id" in gen_resp.json()
@@ -175,21 +174,19 @@ class TestImageAPI:
     def test_poll_completed_task(self, client):
         """Full flow: create product → generate → poll until completed."""
         # Create product
-        p_resp = client.post("/api/products", json={
-            "name": "轮询测试商品", "category": "美妆"
-        })
-        product_id = p_resp.json()["id"]
+        product_id = self._approved_product(client, "轮询测试商品", "美妆")
         upload = client.post(
-            "/api/images/upload",
+            "/api/images/reference",
             data={"product_id": str(product_id)},
             files={"file": ("source.png", io.BytesIO(b"\x89PNG\r\n\x1a\n"), "image/png")},
         )
         assert upload.status_code == 201
 
         # Create generation task (uses placeholder in test)
-        gen_resp = client.post("/api/images/generate", json={
+        gen_resp = client.post("/api/images/tasks", json={
             "product_id": product_id,
             "style": "summer",
+            "reference_asset_id": upload.json()["id"],
         })
         assert gen_resp.status_code == 202
         task_id = gen_resp.json()["task_id"]

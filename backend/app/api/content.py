@@ -1,65 +1,77 @@
-"""Content generation and tool call log API routes."""
-
-from typing import Optional
-
-from fastapi import APIRouter, Depends, Query
+"""Controlled P0 content package APIs. No publishing or platform action exists here."""
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-
 from ..core.database import get_db
-from ..schemas.content import (
-    ContentGenerateRequest,
-    ContentGenerateResponse,
-    ContentVersionListResponse,
-    ToolCallLogListResponse,
-    ToolCallLogRead,
-)
-from ..services.content_service import (
-    generate_content,
-    get_content_history,
-    get_tool_call_logs,
-)
+from ..core.security import require_roles
+from ..models.content import AuditEvent, ContentPackage
+from ..models.user import User
+from ..schemas.content import (AuditEventListResponse, ContentGenerateRequest, ContentPackageCreate,
+    ContentPackageListResponse, ContentPackageRead, ContentPackageUpdate, ContentTransitionRequest, MarkdownExportRead)
+from ..services.content_service import (create_package, edit_package, export_package, generate_package,
+    package_read, transition_package)
 
 router = APIRouter(prefix="/api/content", tags=["content"])
 
+def _package(db: Session, package_id: int) -> ContentPackage:
+    item = db.get(ContentPackage, package_id)
+    if not item: raise HTTPException(404, detail={"code":"not_found","message":"Content package not found"})
+    return item
 
-@router.post("/generate", response_model=ContentGenerateResponse)
-def api_generate_content(data: ContentGenerateRequest, db: Session = Depends(get_db)):
-    result = generate_content(
-        db,
-        product_id=data.product_id,
-        platform=data.platform,
-        content_type=data.content_type,
-        style_hint=data.style_hint,
-    )
-    if not result:
-        from fastapi import HTTPException
+def _service_error(exc: Exception):
+    codes = {"product_not_found": (404, "not_found", "Product not found"),
+             "approved_product_required": (409, "conflict", "Only approved product facts can be used"),
+             "approved_version_immutable": (409, "approved_version_immutable", "Approved content history is immutable"),
+             "illegal_status_transition": (409, "illegal_status_transition", "Illegal approval status transition"),
+             "rejection_reason_required": (422, "validation_error", "Rejection reason is required"),
+             "approval_required": (409, "approval_required", "Approved content is required for export")}
+    status, code, message = codes.get(str(exc), (400, "content_error", "Content operation failed"))
+    raise HTTPException(status, detail={"code":code,"message":message})
 
-        raise HTTPException(status_code=404, detail="Product not found")
-    return result
+@router.get("/packages", response_model=ContentPackageListResponse)
+def list_packages(db: Session=Depends(get_db), _: User=Depends(require_roles("admin", "operator_content"))):
+    records = db.query(ContentPackage).order_by(ContentPackage.updated_at.desc()).all()
+    return {"items":[package_read(db, item) for item in records], "total":len(records)}
 
+@router.post("/packages", response_model=ContentPackageRead, status_code=201)
+def create(data: ContentPackageCreate, db: Session=Depends(get_db), user: User=Depends(require_roles("admin", "operator_content"))):
+    try: return package_read(db, create_package(db, user, data.product_id, data.payload))
+    except (ValueError, RuntimeError, LookupError) as exc: _service_error(exc)
 
-@router.get("/history/{product_id}", response_model=ContentVersionListResponse)
-def api_get_content_history(
-    product_id: int,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
-    return get_content_history(db, product_id, page=page, page_size=page_size)
+@router.get("/packages/{package_id}", response_model=ContentPackageRead)
+def get(package_id: int, db: Session=Depends(get_db), _: User=Depends(require_roles("admin", "operator_content"))): return package_read(db, _package(db, package_id))
 
+@router.patch("/packages/{package_id}", response_model=ContentPackageRead)
+def edit(package_id: int, data: ContentPackageUpdate, db: Session=Depends(get_db), user: User=Depends(require_roles("admin", "operator_content"))):
+    try: return package_read(db, edit_package(db, user, _package(db, package_id), data.payload))
+    except (ValueError, RuntimeError) as exc: _service_error(exc)
 
-# --- Tool Call Logs ---
+@router.post("/packages/{package_id}/generate", response_model=ContentPackageRead)
+def generate(package_id: int, data: ContentGenerateRequest, db: Session=Depends(get_db), user: User=Depends(require_roles("admin", "operator_content"))):
+    try: return package_read(db, generate_package(db, user, _package(db, package_id), data.content_type, data.platform, data.style_hint))
+    except (ValueError, RuntimeError) as exc: _service_error(exc)
 
-router_logs = APIRouter(prefix="/api/logs", tags=["logs"])
+@router.post("/packages/{package_id}/submit", response_model=ContentPackageRead)
+def submit(package_id: int, db: Session=Depends(get_db), user: User=Depends(require_roles("admin", "operator_content"))):
+    try: return package_read(db, transition_package(db, user, _package(db, package_id), "submit"))
+    except (ValueError, RuntimeError) as exc: _service_error(exc)
 
+@router.post("/packages/{package_id}/approve", response_model=ContentPackageRead)
+def approve(package_id: int, data: ContentTransitionRequest, db: Session=Depends(get_db), user: User=Depends(require_roles("admin"))):
+    try: return package_read(db, transition_package(db, user, _package(db, package_id), "approve", data.reason))
+    except (ValueError, RuntimeError) as exc: _service_error(exc)
 
-@router_logs.get("", response_model=ToolCallLogListResponse)
-def api_get_tool_logs(
-    conversation_id: Optional[int] = None,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
-    return get_tool_call_logs(
-        db, conversation_id=conversation_id, page=page, page_size=page_size
-    )
+@router.post("/packages/{package_id}/reject", response_model=ContentPackageRead)
+def reject(package_id: int, data: ContentTransitionRequest, db: Session=Depends(get_db), user: User=Depends(require_roles("admin"))):
+    try: return package_read(db, transition_package(db, user, _package(db, package_id), "reject", data.reason))
+    except (ValueError, RuntimeError) as exc: _service_error(exc)
+
+@router.post("/packages/{package_id}/export", response_model=MarkdownExportRead)
+def export(package_id: int, db: Session=Depends(get_db), user: User=Depends(require_roles("admin"))):
+    try: return export_package(db, user, _package(db, package_id))
+    except (ValueError, RuntimeError) as exc: _service_error(exc)
+
+router_audit = APIRouter(prefix="/api/audit-events", tags=["audit"])
+@router_audit.get("", response_model=AuditEventListResponse)
+def audit_events(db: Session=Depends(get_db), _: User=Depends(require_roles("admin"))):
+    records = db.query(AuditEvent).order_by(AuditEvent.created_at.desc()).all()
+    return {"items":records,"total":len(records)}

@@ -14,6 +14,9 @@ from sqlalchemy.orm import Session
 from ..core.config import settings
 from ..models.asset import Asset, ImageGenerationTask
 from ..models.product import Product
+from ..models.content import ApprovalRecord
+from ..models.user import User
+from .content_service import _audit
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -35,7 +38,12 @@ def _validate_upload(filename: str, file_bytes: bytes) -> None:
         )
 
 
-def save_upload(db: Session, product_id: int, file_bytes: bytes, filename: str) -> Asset:
+class ProviderNoKeyError(RuntimeError): pass
+class ProviderTimeoutError(RuntimeError): pass
+class ProviderFailedError(RuntimeError): pass
+class ProviderFieldMissingError(RuntimeError): pass
+
+def save_upload(db: Session, product_id: int, file_bytes: bytes, filename: str, asset_type: str = "reference") -> Asset:
     """Save an uploaded image and create an Asset record."""
     _validate_upload(filename, file_bytes)
     ext = os.path.splitext(filename)[1].lower() or ".png"
@@ -46,7 +54,7 @@ def save_upload(db: Session, product_id: int, file_bytes: bytes, filename: str) 
 
     asset = Asset(
         product_id=product_id,
-        asset_type="source",
+        asset_type=asset_type,
         source_type="upload",
         url=f"/uploads/{unique_name}",
     )
@@ -74,11 +82,21 @@ def create_generation_task(
             else "qwen:qwen-image"
         ),
         prompt=prompt,
+        provider=settings.image_provider,
     )
     db.add(task)
     db.commit()
     db.refresh(task)
     return task
+
+
+def generate_image_with_provider(db: Session, task: ImageGenerationTask) -> list[str]:
+    """Injectable boundary: production call only runs when credentials are configured."""
+    if not settings.image_gen_configured:
+        raise ProviderNoKeyError("Image provider is not configured")
+    if settings.image_provider == "google":
+        return _call_google_gemini_image(db, task)
+    return _call_qwen_image(task)
 
 
 def process_generation_task(db: Session, task_id: int) -> ImageGenerationTask:
@@ -97,27 +115,22 @@ def process_generation_task(db: Session, task_id: int) -> ImageGenerationTask:
     db.commit()
 
     try:
-        if not settings.image_gen_configured:
-            task.status = "no_key"
-            task.error_message = "Image provider is not configured"
-            db.commit()
-            db.refresh(task)
-            return task
-        if settings.image_gen_configured:
-            if settings.image_provider == "google":
-                result_urls = _call_google_gemini_image(db, task)
-            else:
-                # Qwen is the non-Google default.  Treat an unrecognised
-                # injected configuration as this path so the provider call
-                # still raises its actionable error instead of exposing a
-                # MagicMock/configuration representation.
-                result_urls = _call_qwen_image(task)
+        result_urls = generate_image_with_provider(db=db, task=task)
+        if isinstance(result_urls, dict):
+            result_urls = result_urls.get("images")
         if not result_urls:
-            raise ValueError("Provider response did not contain image results")
+            raise ProviderFieldMissingError("Provider response did not contain image results")
 
         # Save generated assets
         asset_ids = []
         for url in result_urls:
+            # Provider adapters may return bytes in tests or local workers;
+            # persist no binary in audit/DB and expose only a local opaque URL.
+            if isinstance(url, bytes):
+                output_name = f"{uuid.uuid4().hex}.png"
+                with open(os.path.join(UPLOAD_DIR, output_name), "wb") as output_file:
+                    output_file.write(url)
+                url = f"/uploads/{output_name}"
             asset = Asset(
                 product_id=task.product_id,
                 asset_type="generated",
@@ -134,15 +147,18 @@ def process_generation_task(db: Session, task_id: int) -> ImageGenerationTask:
 
         task.result_asset_ids = json.dumps(asset_ids)
         task.status = "completed"
-    except httpx.TimeoutException as e:
+    except (ProviderTimeoutError, httpx.TimeoutException) as e:
         task.status = "timeout"
         task.error_message = str(e) or "Provider timed out"
-    except ValueError as e:
+    except (ProviderFieldMissingError, ValueError) as e:
         task.status = "field_missing"
         task.error_message = str(e)
-    except Exception as e:
-        task.status = "failed"
+    except ProviderNoKeyError as e:
+        task.status = "no_key"
         task.error_message = str(e)
+    except (ProviderFailedError, Exception) as e:
+        task.status = "failed"
+        task.error_message = str(e) or "Provider failed"
 
     db.commit()
     db.refresh(task)
@@ -162,6 +178,42 @@ def get_product_assets(
     if asset_type:
         query = query.filter(Asset.asset_type == asset_type)
     return query.order_by(Asset.created_at.desc()).all()
+
+
+def retry_task(db: Session, actor: User, task: ImageGenerationTask) -> ImageGenerationTask:
+    if task.status not in {"no_key", "timeout", "failed", "field_missing"}:
+        raise RuntimeError("retry_not_available")
+    task.status, task.error_message, task.retry_count = "pending", None, task.retry_count + 1
+    _audit(db, actor, "image.retried", "image_task", task.id, after={"status":"pending","retry_count":task.retry_count}, summary="Retried image task")
+    db.commit(); db.refresh(task); return task
+
+
+def confirm_task(db: Session, actor: User, task: ImageGenerationTask) -> ImageGenerationTask:
+    if task.status != "completed": raise RuntimeError("completed_image_required")
+    task.confirmed_by_id = actor.id; task.confirmed_at = __import__("datetime").datetime.utcnow()
+    _audit(db, actor, "image.confirmed", "image_task", task.id, summary="Confirmed image result")
+    db.commit(); db.refresh(task); return task
+
+
+def transition_task(db: Session, actor: User, task: ImageGenerationTask, action: str, reason: Optional[str] = None) -> ImageGenerationTask:
+    target = {"submit":"submitted", "approve":"approved", "reject":"rejected"}.get(action)
+    if not target or (action == "submit" and (task.approval_status not in {"draft","rejected"} or not task.confirmed_at)) or (action in {"approve","reject"} and task.approval_status != "submitted"):
+        raise RuntimeError("illegal_status_transition")
+    if action == "reject" and not reason: raise ValueError("rejection_reason_required")
+    task.approval_status = target
+    if action == "reject": task.rejection_reason = reason
+    db.add(ApprovalRecord(target_type="image_task", target_id=task.id, status=target, reason=reason, actor_id=actor.id))
+    _audit(db, actor, f"image.{target}", "image_task", task.id, after={"approval_status":target}, summary=reason or f"Image {action}")
+    db.commit(); db.refresh(task); return task
+
+
+def export_task(db: Session, actor: User, task: ImageGenerationTask) -> dict:
+    if task.status != "completed" or not task.confirmed_at or task.approval_status != "approved":
+        raise RuntimeError("approval_required")
+    ids = json.loads(task.result_asset_ids or "[]")
+    _audit(db, actor, "image.exported", "image_task", task.id, summary="Exported approved confirmed image")
+    db.commit()
+    return {"task_id":task.id, "asset_ids":ids, "exported_at":__import__("datetime").datetime.utcnow()}
 
 
 def _build_prompt(product_name: str, style: str) -> str:

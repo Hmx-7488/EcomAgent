@@ -31,6 +31,8 @@ class Asset(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
     )
+    confirmed_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"))
+    confirmed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 
 
 class ImageGenerationTask(Base):
@@ -55,6 +57,12 @@ class ImageGenerationTask(Base):
         Text
     )  # JSON array of generated asset IDs
     error_message: Mapped[Optional[str]] = mapped_column(Text)
+    provider: Mapped[Optional[str]] = mapped_column(String(64))
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    approval_status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
+    confirmed_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"))
+    confirmed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

@@ -15,6 +15,10 @@ AUTH_ME_PATH = "/auth/me"
 PRODUCTS_PATH = "/api/products"
 SKU_COSTS_PATH = "/api/skus/{sku_id}/costs"
 SKU_MARGIN_PATH = "/api/skus/{sku_id}/margin"
+CONTENT_PACKAGES_PATH = "/api/content/packages"
+IMAGE_REFERENCE_PATH = "/api/images/reference"
+IMAGE_TASKS_PATH = "/api/images/tasks"
+AUDIT_EVENTS_PATH = "/api/audit-events"
 
 ROLE_ADMIN = "admin"
 ROLE_OPERATOR_CONTENT = "operator_content"
@@ -60,3 +64,29 @@ def login_as(client: Any, username: str, password: str) -> dict[str, str]:
     assert isinstance(payload.get("access_token"), str) and payload["access_token"]
     assert payload["user"]["role"] == username
     return bearer_headers(payload["access_token"])
+
+
+def create_approved_product(client: Any, headers: dict[str, str], *, name: str = "M2 验收商品") -> dict[str, Any]:
+    """Create the minimum approved product fact required by M2 generation.
+
+    M2 must never permit content or image generation from a draft product.
+    Approval remains a product-fact operation defined by the M1 API.
+    """
+    created = client.post(
+        PRODUCTS_PATH,
+        headers=headers,
+        json={
+            "name": name,
+            "category": "Demo",
+            "skus": [{"sku_name": "标准款", "price": 100}],
+        },
+    )
+    assert created.status_code == 201, created.text
+    product = created.json()
+    approved = client.put(
+        f"{PRODUCTS_PATH}/{product['id']}",
+        headers=headers,
+        json={"status": "approved"},
+    )
+    assert approved.status_code == 200, approved.text
+    return approved.json()

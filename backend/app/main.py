@@ -9,7 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .api.content import router as content_router, router_logs
+from .api.content import router as content_router, router_audit
 from .api.images import router as image_router
 from .api.products import router as product_router
 from .api.auth import router as auth_router
@@ -105,7 +105,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Register routers
 app.include_router(product_router)
 app.include_router(content_router)
-app.include_router(router_logs)
+app.include_router(router_audit)
 app.include_router(image_router)
 app.include_router(auth_router)
 app.include_router(cost_router)
