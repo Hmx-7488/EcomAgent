@@ -167,8 +167,8 @@ def _compare(expected: dict[str, Any], actual: dict[str, Any]) -> list[str]:
 
 
 def _create_empty_database(root_url: str, database_name: str) -> str:
-    if not database_name.startswith("ecomagent_m21_"):
-        raise ValueError("verification database name must start with ecomagent_m21_")
+    if not database_name.startswith(("ecomagent_m21_", "ecomagent_m3_")):
+        raise ValueError("verification database name must start with ecomagent_m21_ or ecomagent_m3_")
     root = make_url(root_url)
     admin_url: URL = root.set(database="postgres")
     engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")

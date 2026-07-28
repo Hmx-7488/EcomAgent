@@ -39,6 +39,7 @@ class MarkdownExportRead(BaseModel):
 
 class AuditEventRead(BaseModel):
     id: int; action: str; target_type: str; target_id: int; actor_id: Optional[int]
+    before_json: Optional[str]; after_json: Optional[str]
     summary: Optional[str]; created_at: datetime
     model_config = {"from_attributes": True}
 

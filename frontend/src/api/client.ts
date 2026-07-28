@@ -67,9 +67,11 @@ async function mockAdapter(config: AxiosRequestConfig) {
 
 const apiClient = axios.create({ baseURL: "/api", timeout: 30000, headers: { "Content-Type": "application/json" }, adapter: usingMock ? (mockAdapter as never) : undefined });
 
+export function shouldAttachStaffAuthorization(url?: string) { return !url?.startsWith("/customer/"); }
+
 apiClient.interceptors.request.use((config) => {
   const token = sessionStorage.getItem("ecomagent_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token && shouldAttachStaffAuthorization(config.url)) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 apiClient.interceptors.response.use((res) => res, (error) => Promise.reject(error));

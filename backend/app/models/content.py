@@ -3,7 +3,7 @@
 import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.database import Base
@@ -90,16 +90,70 @@ class AuditEvent(Base):
 
 class Conversation(Base):
     __tablename__ = "conversations"
+    __table_args__ = (
+        Index("ix_conversations_product_id", "product_id"),
+        Index("ix_conversations_status", "status"),
+        UniqueConstraint("token_digest", name="uq_conversations_token_digest"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[Optional[str]] = mapped_column(String(255))
-    status: Mapped[str] = mapped_column(String(32), default="active")
+    product_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("products.id"))
+    token_digest: Mapped[Optional[str]] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    last_risk_level: Mapped[Optional[str]] = mapped_column(String(16))
+    transfer_reason: Mapped[Optional[str]] = mapped_column(String(128))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
     )
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
+
+
+class ConversationMessage(Base):
+    __tablename__ = "conversation_messages"
+    __table_args__ = (
+        Index("ix_conversation_messages_conversation_id", "conversation_id"),
+        Index("ix_conversation_messages_actor_id", "actor_id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(Integer, ForeignKey("conversations.id"), nullable=False)
+    sender_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    message_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    visible_to_customer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    actor_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"))
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ConversationDecision(Base):
+    __tablename__ = "conversation_decisions"
+    __table_args__ = (
+        UniqueConstraint("customer_message_id", name="uq_conversation_decision_message"),
+        Index("ix_conversation_decisions_conversation_id", "conversation_id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(Integer, ForeignKey("conversations.id"), nullable=False)
+    customer_message_id: Mapped[int] = mapped_column(Integer, ForeignKey("conversation_messages.id"), nullable=False)
+    risk_level: Mapped[str] = mapped_column(String(16), nullable=False)
+    decision: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_summary: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    provider_status: Mapped[Optional[str]] = mapped_column(String(32))
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ConversationFactSource(Base):
+    __tablename__ = "conversation_fact_sources"
+    __table_args__ = (Index("ix_conversation_fact_sources_decision_id", "decision_id"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    decision_id: Mapped[int] = mapped_column(Integer, ForeignKey("conversation_decisions.id"), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_object_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    field_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    data_time: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
 
 
 class ToolCallLog(Base):

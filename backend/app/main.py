@@ -15,6 +15,7 @@ from .api.images import router as image_router
 from .api.products import router as product_router
 from .api.auth import router as auth_router
 from .api.costs import router as cost_router
+from .api.customer_service import customer_router, service_router
 from .core.config import settings
 from .core.database import engine
 from .core.schema_contract import assert_schema_current
@@ -115,10 +116,20 @@ app.include_router(router_audit)
 app.include_router(image_router)
 app.include_router(auth_router)
 app.include_router(cost_router)
+app.include_router(customer_router)
+app.include_router(service_router)
 
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(_request, exc):
-    return JSONResponse(status_code=422, content={"detail":{"code":"validation_error", "message":"Request validation failed", "fields":exc.errors()}})
+    fields = []
+    for error in exc.errors():
+        safe_error = {key: value for key, value in error.items() if key != "ctx"}
+        if error.get("ctx"):
+            safe_error["ctx"] = {
+                key: str(value) for key, value in error["ctx"].items()
+            }
+        fields.append(safe_error)
+    return JSONResponse(status_code=422, content={"detail":{"code":"validation_error", "message":"Request validation failed", "fields":fields}})
 
 @app.exception_handler(HTTPException)
 async def http_error_handler(_request, exc):
