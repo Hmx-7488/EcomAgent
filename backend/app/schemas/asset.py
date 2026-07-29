@@ -1,7 +1,7 @@
 """Schemas for reference images and controlled P0 image tasks."""
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 class AssetRead(BaseModel):
     id: int; product_id: int; asset_type: str; source_type: Optional[str]; url: str
@@ -17,7 +17,7 @@ class ImageTaskRead(BaseModel):
     model_name: Optional[str]; prompt: Optional[str]; result_asset_ids: Optional[str]; error_message: Optional[str]
     provider: Optional[str]; retry_count: int; approval_status: str; rejection_reason: Optional[str]
     confirmed_by_id: Optional[int]; confirmed_at: Optional[datetime]; created_at: datetime; updated_at: datetime
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
 class ImageTaskCreateResponse(BaseModel):
     task_id: int; status: str
 class ImageTransitionRequest(BaseModel): reason: Optional[str] = Field(default=None, max_length=2000)

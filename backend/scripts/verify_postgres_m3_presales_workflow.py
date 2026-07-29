@@ -55,7 +55,7 @@ def main() -> int:
     with TestClient(app) as client:
         def login(index):
             username, password, _ = users[index]
-            response = client.post("/auth/login", json={"username": username, "password": password})
+            response = client.post("/api/auth/login", json={"username": username, "password": password})
             assert response.status_code == 200, response.text
             return {"Authorization": f"Bearer {response.json()['access_token']}"}
         operator, admin, service = login(0), login(1), login(2)

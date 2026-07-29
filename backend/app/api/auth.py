@@ -4,7 +4,7 @@ from ..core.database import get_db
 from ..core.security import create_access_token, current_user, verify_password
 from ..models.user import User
 from ..schemas.auth import LoginRequest, LoginResponse, UserRead
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(prefix="/api/auth", tags=["auth"])
 @router.post("/login", response_model=LoginResponse)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == data.username).first()

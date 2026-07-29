@@ -37,9 +37,9 @@ def test_image_provider_failures_have_explicit_statuses(
     monkeypatch.setattr("app.services.image_service.settings.image_gen_api_key", "test-key")
     monkeypatch.setattr("app.services.image_service.settings.image_provider", "qwen")
     if side_effect is None:
-        monkeypatch.setattr("app.services.image_service._call_qwen_image", lambda _task: [])
+        monkeypatch.setattr("app.services.image_service._call_qwen_image", lambda _db, _task: [])
     else:
-        def raise_provider(_task):
+        def raise_provider(_db, _task):
             raise side_effect
         monkeypatch.setattr("app.services.image_service._call_qwen_image", raise_provider)
     assert process_generation_task(db_session, task.id).status == expected

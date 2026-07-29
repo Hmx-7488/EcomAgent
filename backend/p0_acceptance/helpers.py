@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 
-AUTH_LOGIN_PATH = "/auth/login"
-AUTH_ME_PATH = "/auth/me"
+AUTH_LOGIN_PATH = "/api/auth/login"
+AUTH_ME_PATH = "/api/auth/me"
 PRODUCTS_PATH = "/api/products"
 SKU_COSTS_PATH = "/api/skus/{sku_id}/costs"
 SKU_MARGIN_PATH = "/api/skus/{sku_id}/margin"

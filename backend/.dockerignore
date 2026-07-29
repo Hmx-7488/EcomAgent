@@ -1,0 +1,11 @@
+.env
+.venv
+uploads
+*.db
+__pycache__
+*.py[cod]
+.pytest_cache
+.coverage
+p0_acceptance
+tests
+test_*.py

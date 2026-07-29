@@ -6,6 +6,8 @@ import io
 
 import pytest
 
+from scripts.image_fixture import png_bytes
+
 from .helpers import (
     AUDIT_EVENTS_PATH,
     IMAGE_REFERENCE_PATH,
@@ -33,7 +35,7 @@ def _reference(client, headers, product_id: int):
         IMAGE_REFERENCE_PATH,
         headers=headers,
         data={"product_id": str(product_id)},
-        files={"file": ("reference.png", io.BytesIO(b"\x89PNG\r\n\x1a\nvalid-demo-reference"), "image/png")},
+        files={"file": ("reference.png", io.BytesIO(png_bytes()), "image/png")},
     )
     assert response.status_code == 201, response.text
     assert response.json()["asset_type"] == "reference"
@@ -98,7 +100,7 @@ def test_image_approval_requires_completed_confirmed_submitted_task_and_records_
     product = create_approved_product(client, operator)
     reference = _reference(client, operator, product["id"])
     import app.services.image_service as image_service
-    monkeypatch.setattr(image_service, "generate_image_with_provider", lambda **_: {"images": [b"generated"]})
+    monkeypatch.setattr(image_service, "generate_image_with_provider", lambda **_: {"images": [png_bytes(width=12, height=10)]})
     task_id = _task(client, operator, product["id"], reference["id"])
 
     assert client.post(f"{IMAGE_TASKS_PATH}/{task_id}/export", headers=admin).status_code == 409

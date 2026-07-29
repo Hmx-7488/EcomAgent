@@ -1,0 +1,18 @@
+{
+  "base_url": "http://127.0.0.1:8080",
+  "environment_label": "Docker Desktop Windows; frontend same-origin Nginx proxy; PostgreSQL volume; sequential local requests",
+  "max_ms": 19.595,
+  "measured_at": "2026-07-28T09:32:49.481776+00:00",
+  "median_ms": 9.468,
+  "method": "sequential requests; nearest-rank percentile; client wall-clock",
+  "metric": "authenticated_product_list_latency",
+  "min_ms": 6.683,
+  "p95_ms": 14.445,
+  "passed": true,
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.3",
+  "route": "/api/products?page=1&page_size=20",
+  "sample_count": 80,
+  "threshold_ms": 1000.0,
+  "warmup_count": 10
+}

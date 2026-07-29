@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -19,6 +20,7 @@ from .api.customer_service import customer_router, service_router
 from .core.config import settings
 from .core.database import engine
 from .core.schema_contract import assert_schema_current
+from .services.image_service import UPLOAD_DIR
 
 # Import all models so the read-only runtime schema contract sees every table.
 import app.models.product  # noqa: F401
@@ -93,6 +95,8 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # CORS — allow frontend dev server (must be outermost for preflight handling)
 app.add_middleware(

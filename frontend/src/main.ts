@@ -1,7 +1,12 @@
 import { createApp } from "vue";
-import ElementPlus from "element-plus";
+import {
+  ElAlert, ElButton, ElCard, ElCol, ElCollapse, ElCollapseItem, ElContainer,
+  ElDialog, ElDivider, ElForm, ElFormItem, ElHeader, ElImage, ElInput,
+  ElInputNumber, ElMain, ElOption, ElPagination, ElResult, ElRow, ElSelect,
+  ElSkeleton, ElTabPane, ElTable, ElTableColumn, ElTabs, ElTag, ElTooltip,
+  ElUpload,
+} from "element-plus";
 import "element-plus/dist/index.css";
-import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { createPinia } from "pinia";
 
 import App from "./App.vue";
@@ -9,7 +14,13 @@ import router from "./router";
 
 const app = createApp(App);
 
-app.use(ElementPlus, { locale: zhCn });
+[
+  ElAlert, ElButton, ElCard, ElCol, ElCollapse, ElCollapseItem, ElContainer,
+  ElDialog, ElDivider, ElForm, ElFormItem, ElHeader, ElImage, ElInput,
+  ElInputNumber, ElMain, ElOption, ElPagination, ElResult, ElRow, ElSelect,
+  ElSkeleton, ElTabPane, ElTable, ElTableColumn, ElTabs, ElTag, ElTooltip,
+  ElUpload,
+].forEach((component) => app.component(component.name!, component));
 app.use(createPinia());
 app.use(router);
 

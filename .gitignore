@@ -1,4 +1,5 @@
 # Local runtime secrets and development artifacts
+/.env
 backend/.env
 backend/.venv/
 backend/uploads/
@@ -14,6 +15,8 @@ __pycache__/
 # Frontend tooling
 frontend/node_modules/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
 *.tsbuildinfo
 
 # Local AI tooling and task artifacts

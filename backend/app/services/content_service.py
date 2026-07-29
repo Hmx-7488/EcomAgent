@@ -2,6 +2,7 @@
 
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -255,5 +256,4 @@ def export_package(db: Session, actor: User, package: ContentPackage) -> dict:
     markdown = "# Demo 数据：内容素材包\n\n" + "\n\n".join(f"## {key}\n{json.dumps(value, ensure_ascii=False, indent=2) if isinstance(value, (dict,list)) else value}" for key, value in payload.items())
     _audit(db, actor, "content.exported", "content_package", package.id, summary="Exported approved Markdown")
     db.commit()
-    from datetime import datetime
-    return {"package_id": package.id, "markdown": markdown, "exported_at": datetime.utcnow()}
+    return {"package_id": package.id, "markdown": markdown, "exported_at": datetime.now(timezone.utc)}

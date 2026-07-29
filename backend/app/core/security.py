@@ -1,14 +1,15 @@
 """Minimal dependency-free HS256 JWT and fixed-role authorization."""
-import base64, hashlib, hmac, json, os, time
+import base64, hashlib, hmac, json, time
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from .database import get_db
+from .config import settings
 from ..models.user import User
 
 ROLES = {"admin", "operator_content", "customer_service"}
 _bearer = HTTPBearer(auto_error=False)
-_secret = os.getenv("JWT_SECRET", "ecomagent-local-development-secret")
+_secret = settings.jwt_secret
 def _b64(data: bytes) -> str: return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 def _unb64(data: str) -> bytes: return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 def hash_password(password: str) -> str:

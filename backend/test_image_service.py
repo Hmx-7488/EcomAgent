@@ -1,4 +1,4 @@
-﻿"""Tests for image generation service and API."""
+"""Tests for image generation service and API."""
 
 import io
 import json
@@ -6,6 +6,15 @@ import time
 from unittest.mock import patch
 
 import pytest
+from PIL import Image
+
+
+def _image_bytes(image_format: str = "PNG", size: tuple[int, int] = (2, 2)) -> bytes:
+    output = io.BytesIO()
+    Image.new("RGB", size, color=(32, 128, 192)).save(
+        output, format=image_format
+    )
+    return output.getvalue()
 
 
 class TestImageUploadValidation:
@@ -27,13 +36,13 @@ class TestImageUploadValidation:
         from app.services.image_service import _validate_upload
 
         # Should not raise
-        _validate_upload("product.png", b"fake-png-data")
+        _validate_upload("product.png", _image_bytes())
 
     def test_accept_jpg_uppercase(self):
         from app.services.image_service import _validate_upload
 
         # Should not raise — .lower() handles case
-        _validate_upload("product.JPG", b"fake-jpg-data")
+        _validate_upload("product.JPG", _image_bytes("JPEG"))
 
 
 class TestBuildPrompt:
@@ -61,21 +70,6 @@ class TestBuildPrompt:
         assert "极简" in prompt  # falls back to minimal style description
 
 
-class TestPlaceholderResult:
-    """Test _placeholder_result fallback."""
-
-    def test_returns_three_urls(self):
-        from app.models.asset import ImageGenerationTask
-        from app.services.image_service import _placeholder_result
-
-        task = ImageGenerationTask(
-            id=1, product_id=1, style="home", model_name="qwen-image"
-        )
-        urls = _placeholder_result(task)
-        assert len(urls) == 3
-        assert all("placeholder_home_" in u for u in urls)
-
-
 class TestImageAPI:
     """Integration tests for image generation API endpoints."""
 
@@ -92,7 +86,7 @@ class TestImageAPI:
         assert resp.status_code == 422
 
     def test_upload_invalid_product(self, client):
-        fake_img = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+        fake_img = io.BytesIO(_image_bytes())
         fake_img.name = "test.png"
         resp = client.post(
             "/api/images/upload",
@@ -107,7 +101,7 @@ class TestImageAPI:
 
     def test_generate_creates_task(self, client):
         product_id = self._approved_product(client, "图片测试商品")
-        upload = client.post("/api/images/reference", data={"product_id": str(product_id)}, files={"file": ("source.png", io.BytesIO(b"\x89PNG\r\n\x1a\n"), "image/png")})
+        upload = client.post("/api/images/reference", data={"product_id": str(product_id)}, files={"file": ("source.png", io.BytesIO(_image_bytes()), "image/png")})
         assert upload.status_code == 201
 
         resp = client.post("/api/images/tasks", json={
@@ -136,11 +130,11 @@ class TestImageAPI:
         import io
 
         product_id = self._approved_product(client, "完整流程商品", "美妆")
-        upload = client.post("/api/images/reference", data={"product_id": str(product_id)}, files={"file": ("source.png", io.BytesIO(b"\x89PNG\r\n\x1a\n"), "image/png")})
+        upload = client.post("/api/images/reference", data={"product_id": str(product_id)}, files={"file": ("source.png", io.BytesIO(_image_bytes()), "image/png")})
         assert upload.status_code == 201
 
         # Upload first
-        fake_img = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+        fake_img = io.BytesIO(_image_bytes())
         upload_resp = client.post(
             "/api/images/reference",
             data={"product_id": str(product_id)},
@@ -178,7 +172,7 @@ class TestImageAPI:
         upload = client.post(
             "/api/images/reference",
             data={"product_id": str(product_id)},
-            files={"file": ("source.png", io.BytesIO(b"\x89PNG\r\n\x1a\n"), "image/png")},
+            files={"file": ("source.png", io.BytesIO(_image_bytes()), "image/png")},
         )
         assert upload.status_code == 201
 
@@ -226,7 +220,7 @@ class TestProcessGenerationTask:
 
         with patch("app.services.image_service.settings") as mock_settings, patch(
             "app.services.image_service._call_qwen_image",
-            return_value=["/uploads/generated-1.png", "/uploads/generated-2.png"],
+            return_value=[_image_bytes(), _image_bytes(size=(3, 4))],
         ):
             mock_settings.image_gen_configured = True
             mock_settings.image_provider = "qwen"
@@ -253,7 +247,7 @@ class TestProcessGenerationTask:
         db_session.flush()
 
         task = ImageGenerationTask(
-            product_id=product.id, style="home", model_name="qwen-image"
+            product_id=product.id, style="home", model_name="qwen-image-2.0"
         )
         db_session.add(task)
         db_session.flush()

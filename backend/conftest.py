@@ -1,4 +1,4 @@
-﻿"""Pytest configuration and fixtures for EcomAgent tests."""
+"""Pytest configuration and fixtures for EcomAgent tests."""
 
 import os
 
@@ -45,7 +45,7 @@ def _reset_rate_limiter() -> None:
 
 
 @pytest.fixture(autouse=True)
-def setup_database(monkeypatch):
+def setup_database(monkeypatch, tmp_path):
     """Create all tables before each test, drop after."""
     Base.metadata.create_all(bind=engine)
     _reset_rate_limiter()
@@ -58,6 +58,11 @@ def setup_database(monkeypatch):
         seed_session.close()
     # Tests never inherit keys from the machine or access a real provider.
     from app.core.config import settings
+    from app.services import image_service
+
+    isolated_upload_dir = tmp_path / "uploads"
+    isolated_upload_dir.mkdir()
+    monkeypatch.setattr(image_service, "UPLOAD_DIR", str(isolated_upload_dir))
     for key in ("google_api_key", "llm_api_key", "image_gen_api_key", "llm_api_base", "image_gen_api_base", "llm_model"):
         monkeypatch.setattr(settings, key, "")
     def deny_network(*_args, **_kwargs):

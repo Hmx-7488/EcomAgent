@@ -1,5 +1,6 @@
 """Controlled P0 content package APIs. No publishing or platform action exists here."""
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from ..core.database import get_db
 from ..core.security import require_roles
@@ -72,6 +73,16 @@ def export(package_id: int, db: Session=Depends(get_db), user: User=Depends(requ
 
 router_audit = APIRouter(prefix="/api/audit-events", tags=["audit"])
 @router_audit.get("", response_model=AuditEventListResponse)
-def audit_events(db: Session=Depends(get_db), _: User=Depends(require_roles("admin"))):
-    records = db.query(AuditEvent).order_by(AuditEvent.created_at.desc()).all()
-    return {"items":records,"total":len(records)}
+def audit_events(
+    target_type: Optional[str] = Query(default=None, max_length=32),
+    target_id: Optional[int] = Query(default=None, ge=1),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    query = db.query(AuditEvent)
+    if target_type is not None:
+        query = query.filter(AuditEvent.target_type == target_type)
+    if target_id is not None:
+        query = query.filter(AuditEvent.target_id == target_id)
+    records = query.order_by(AuditEvent.created_at.desc()).all()
+    return {"items": records, "total": len(records)}

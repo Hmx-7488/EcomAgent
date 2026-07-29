@@ -39,6 +39,7 @@ def main() -> int:
     from app.main import app
     from app.models.user import User
     from app.services import image_service
+    from scripts.image_fixture import png_bytes, verify_and_load_png
 
     suffix = hashlib.sha256(args.database_url.encode()).hexdigest()[:10]
     operator_name, admin_name, service_name = (f"m21_operator_{suffix}", f"m21_admin_{suffix}", f"m21_service_{suffix}")
@@ -57,11 +58,11 @@ def main() -> int:
         session.close()
 
     original_provider = image_service.generate_image_with_provider
-    image_service.generate_image_with_provider = lambda **_kwargs: {"images": [b"m21-local-provider-stub"]}
+    image_service.generate_image_with_provider = lambda **_kwargs: {"images": [png_bytes(14, 12)]}
     try:
         with TestClient(app) as client:
             def login(username: str, password: str) -> dict[str, str]:
-                response = client.post("/auth/login", json={"username": username, "password": password})
+                response = client.post("/api/auth/login", json={"username": username, "password": password})
                 assert response.status_code == 200, response.text
                 return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
@@ -80,9 +81,12 @@ def main() -> int:
                 "/api/images/reference",
                 headers=operator,
                 data={"product_id": str(product_id)},
-                files={"file": ("m21-reference.png", b"\x89PNG\r\n\x1a\nm21-reference", "image/png")},
+                files={"file": ("m21-reference.png", png_bytes(10, 8), "image/png")},
             )
             assert reference.status_code == 201, reference.text
+            reference_name = reference.json()["url"].rsplit("/", 1)[-1]
+            with open(os.path.join(image_service.UPLOAD_DIR, reference_name), "rb") as image_file:
+                assert verify_and_load_png(image_file.read()) == (10, 8)
             task = client.post(
                 "/api/images/tasks",
                 headers=operator,
@@ -98,6 +102,12 @@ def main() -> int:
             assert client.post(f"/api/images/tasks/{task_id}/approve", headers=admin, json={}).status_code == 200
             exported = client.post(f"/api/images/tasks/{task_id}/export", headers=admin)
             assert exported.status_code == 200, exported.text
+            assets = client.get(f"/api/images/assets/{product_id}", headers=operator)
+            assert assets.status_code == 200, assets.text
+            generated = next(item for item in assets.json()["items"] if item["id"] in exported.json()["asset_ids"])
+            generated_name = generated["url"].rsplit("/", 1)[-1]
+            with open(os.path.join(image_service.UPLOAD_DIR, generated_name), "rb") as image_file:
+                assert verify_and_load_png(image_file.read()) == (14, 12)
             audit = client.get("/api/audit-events", headers=admin)
             assert audit.status_code == 200, audit.text
             actions = {item["action"] for item in audit.json()["items"] if item["target_id"] == task_id}

@@ -1,11 +1,16 @@
 import axios, { type AxiosRequestConfig } from "axios";
 
 /**
- * M1 deliberately starts in local mock mode.  Set VITE_USE_MOCK=false only
- * after the frozen backend contract is available; no fallback calls are made
- * to an external service.
+ * Mock data is a development-only aid. Production bundles always use the
+ * same-origin /api contract, even if VITE_USE_MOCK is accidentally set.
  */
-export const usingMock = import.meta.env.VITE_USE_MOCK !== "false";
+export function resolveMockMode(isDevelopment: boolean, configuredValue?: string) {
+  return isDevelopment && configuredValue !== "false";
+}
+export const usingMock = resolveMockMode(import.meta.env.DEV, import.meta.env.VITE_USE_MOCK);
+export const API_BASE_URL = "/api";
+export const AUTH_LOGIN_PATH = "/auth/login";
+export const AUTH_LOGIN_URL = API_BASE_URL + AUTH_LOGIN_PATH;
 
 type MockProduct = Record<string, unknown> & { id: number; skus: Array<Record<string, unknown>> };
 const products: MockProduct[] = [
@@ -65,7 +70,16 @@ async function mockAdapter(config: AxiosRequestConfig) {
   return mockError(config, 404, "API_NOT_AVAILABLE", "Mock 中未实现此接口");
 }
 
-const apiClient = axios.create({ baseURL: "/api", timeout: 30000, headers: { "Content-Type": "application/json" }, adapter: usingMock ? (mockAdapter as never) : undefined });
+export function createApiClient(useMock = usingMock) {
+  return axios.create({
+    baseURL: API_BASE_URL,
+    timeout: 30000,
+    headers: { "Content-Type": "application/json" },
+    adapter: useMock ? (mockAdapter as never) : undefined,
+  });
+}
+
+const apiClient = createApiClient();
 
 export function shouldAttachStaffAuthorization(url?: string) { return !url?.startsWith("/customer/"); }
 

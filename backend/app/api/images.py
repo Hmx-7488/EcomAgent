@@ -30,9 +30,13 @@ def _error(exc: Exception):
 def reference(product_id: int=Form(...), file: UploadFile=File(...), db: Session=Depends(get_db), user: User=Depends(require_roles("admin","operator_content"))):
     product = db.get(Product, product_id)
     if not product or product.status != "approved": raise HTTPException(409, detail={"code":"approved_product_required","message":"Only approved product facts can be used"})
-    if not file.filename or not file.content_type or not file.content_type.startswith("image/"):
+    if not file.filename:
         raise HTTPException(422, detail={"code":"validation_error","message":"An image reference is required"})
-    try: asset = image_service.save_upload(db, product_id, file.file.read(), file.filename, "reference")
+    file_bytes = file.file.read(image_service.MAX_FILE_SIZE + 1)
+    try:
+        asset = image_service.save_upload(
+            db, product_id, file_bytes, file.filename, "reference", file.content_type
+        )
     except ValueError as exc: raise HTTPException(422, detail={"code":"validation_error","message":str(exc)})
     _audit(db, user, "image.reference_uploaded", "media_asset", asset.id, summary="Uploaded reference image"); db.commit(); return asset
 

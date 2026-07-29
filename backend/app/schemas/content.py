@@ -1,7 +1,7 @@
 """Schemas for P0 content packages, approvals, exports and audit evidence."""
 from datetime import datetime
 from typing import Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 CONTENT_FIELDS = {"title", "selling_points", "detail", "parameters", "faq", "sales_script", "promo_material"}
 
@@ -23,6 +23,7 @@ class ContentTransitionRequest(BaseModel):
     reason: Optional[str] = Field(default=None, max_length=2000)
 
 class ContentVersionRead(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
     id: int; version_no: int; payload: dict[str, Any]; provider: str
     model_name: Optional[str]; task_status: str; error_summary: Optional[str]; created_at: datetime
 

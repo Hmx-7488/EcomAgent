@@ -8,6 +8,7 @@ required authorization matrix without inventing credentials or token fields.
 from __future__ import annotations
 
 from .helpers import (
+    AUTH_ME_PATH,
     PRODUCTS_PATH,
     ROLE_ADMIN,
     ROLE_CUSTOMER_SERVICE,
@@ -27,7 +28,7 @@ import pytest
 def test_each_fixed_backoffice_role_can_log_in(client, role):
     """C-F01: exactly the three P0 backoffice roles have local logins."""
     headers = login_as(client, role, TEST_PASSWORDS[role])
-    response = client.get("/auth/me", headers=headers)
+    response = client.get(AUTH_ME_PATH, headers=headers)
     assert response.status_code == 200
     assert response.json()["role"] == role
 

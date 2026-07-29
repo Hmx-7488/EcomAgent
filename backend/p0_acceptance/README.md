@@ -9,7 +9,7 @@ Set-Location backend
 
 当前冻结的 M1 契约：
 
-- `POST /auth/login` `{username,password}`、`GET /auth/me`、Bearer token；成功响应含 `access_token`、`token_type: bearer` 与 `user`。
+- `POST /api/auth/login` `{username,password}`、`GET /api/auth/me`、Bearer token；成功响应含 `access_token`、`token_type: bearer` 与 `user`。
 - `GET/POST/PATCH /api/products`；`GET/POST/PATCH /api/products/{id}/skus[/{skuId}]`。
 - `POST /api/skus/{skuId}/costs`，`GET /api/skus/{skuId}/margin`。
 - 统一错误：`{"detail":{"code":"validation_error|authentication_required|permission_denied|not_found|conflict|internal_error","message":"...","fields":{...}?}}`。

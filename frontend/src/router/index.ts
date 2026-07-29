@@ -21,12 +21,22 @@ export const routes: RouteRecordRaw[] = [
   { path: "/:pathMatch(.*)*", redirect: "/forbidden" },
 ];
 export function isRoleAllowed(role: Role, allowed?: Role[]) { return !allowed || allowed.includes(role); }
+export type NavigationUser = { role: Role } | null;
+export function resolveProtectedNavigation(
+  target: { public?: boolean; fullPath: string; roles?: Role[] },
+  user: NavigationUser,
+) {
+  if (target.public) return true;
+  if (!user) return { path: "/login", query: { redirect: target.fullPath } };
+  if (!isRoleAllowed(user.role, target.roles)) return "/forbidden";
+  return true;
+}
 const router = createRouter({ history: createWebHistory(), routes });
 router.beforeEach((to) => {
   const auth = useAuthStore();
-  if (to.meta.public) return true;
-  if (!auth.isAuthenticated) return { path: "/login", query: { redirect: to.fullPath } };
-  if (!auth.user || !isRoleAllowed(auth.user.role, to.meta.roles)) return "/forbidden";
-  return true;
+  return resolveProtectedNavigation(
+    { public: to.meta.public, fullPath: to.fullPath, roles: to.meta.roles },
+    auth.isAuthenticated ? auth.user : null,
+  );
 });
 export default router;
