@@ -2,12 +2,16 @@
 
 import base64
 import binascii
+import io
 import json
 import os
+import re
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
+from PIL import Image, ImageOps
 from sqlalchemy.orm import Session
 
 from ..core.config import settings
@@ -31,6 +35,12 @@ from .image_integrity import (
 
 UPLOAD_DIR = os.path.abspath(settings.upload_dir)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+QWEN_MAX_REQUEST_BODY_BYTES = 1_200_000
+QWEN_MAX_REFERENCE_DATA_URL_BYTES = 1_100_000
+QWEN_REFERENCE_MAX_EDGE = 1024
+QWEN_REFERENCE_MIN_EDGE = 128
+QWEN_REFERENCE_JPEG_QUALITIES = (90, 85, 80, 75, 70)
 
 def validate_image_bytes(
     file_bytes: bytes,
@@ -60,6 +70,64 @@ class ProviderNoKeyError(RuntimeError): pass
 class ProviderTimeoutError(RuntimeError): pass
 class ProviderFailedError(RuntimeError): pass
 class ProviderFieldMissingError(RuntimeError): pass
+
+
+def _safe_diagnostic_value(value: object, *, limit: int = 96) -> str | None:
+    """Return a bounded identifier without copying arbitrary Provider text."""
+
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        return None
+    normalized = str(value)
+    if (
+        not normalized
+        or len(normalized) > limit
+        or not re.fullmatch(r"[A-Za-z0-9._-]+", normalized)
+    ):
+        return None
+    return normalized
+
+
+def _provider_http_diagnostic(
+    exc: httpx.HTTPStatusError,
+    *,
+    elapsed_ms: int,
+) -> str:
+    """Build a safe HTTP failure summary without response bodies or secrets."""
+
+    response = exc.response
+    header_request_id = None
+    for header in ("x-request-id", "request-id", "x-trace-id", "trace-id"):
+        candidate = _safe_diagnostic_value(response.headers.get(header))
+        if candidate is not None:
+            header_request_id = candidate
+            break
+
+    provider_code = None
+    body_request_id = None
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            provider_code = _safe_diagnostic_value(payload.get("code"))
+            if provider_code is None and isinstance(payload.get("error"), dict):
+                provider_code = _safe_diagnostic_value(payload["error"].get("code"))
+            candidate = payload.get("request_id")
+            if isinstance(candidate, str):
+                body_request_id = _safe_diagnostic_value(candidate)
+    except (TypeError, ValueError):
+        pass
+    request_id = header_request_id or body_request_id
+
+    fields = [
+        "Qwen image request failed:",
+        "type=http_status_error",
+        f"http_status={response.status_code}",
+        f"elapsed_ms={elapsed_ms}",
+    ]
+    if provider_code:
+        fields.append(f"provider_code={provider_code}")
+    if request_id:
+        fields.append(f"request_id={request_id}")
+    return " ".join(fields)
 
 def save_upload(
     db: Session,
@@ -319,7 +387,7 @@ def _reference_image_data_url(
     db: Session,
     task: ImageGenerationTask,
 ) -> str:
-    """Load one validated local reference without exposing its bytes elsewhere."""
+    """Load, validate and transport-compress one local reference image."""
 
     if not task.source_asset_id:
         raise ProviderFieldMissingError("Qwen image editing requires a reference image")
@@ -336,18 +404,63 @@ def _reference_image_data_url(
     try:
         with open(source_path, "rb") as source_file:
             source_bytes = source_file.read(MAX_FILE_SIZE + 1)
-        source_info = validate_image_bytes(source_bytes, filename=filename)
+        validate_image_bytes(source_bytes, filename=filename)
+        return _compress_qwen_reference(source_bytes)
     except (OSError, ValueError) as exc:
         raise ProviderFailedError("Qwen reference image failed validation") from exc
 
-    mime_type = {
-        "PNG": "image/png",
-        "JPEG": "image/jpeg",
-        "WEBP": "image/webp",
-        "BMP": "image/bmp",
-    }[source_info.format]
-    encoded = base64.b64encode(source_bytes).decode("ascii")
-    return f"data:{mime_type};base64,{encoded}"
+
+def _compress_qwen_reference(source_bytes: bytes) -> str:
+    """Return a bounded JPEG data URL without changing the stored source image."""
+
+    with Image.open(io.BytesIO(source_bytes)) as opened:
+        opened.load()
+        normalized = ImageOps.exif_transpose(opened)
+        if normalized.mode in {"RGBA", "LA"} or (
+            normalized.mode == "P" and "transparency" in normalized.info
+        ):
+            rgba = normalized.convert("RGBA")
+            rgb = Image.new("RGB", rgba.size, "white")
+            rgb.paste(rgba, mask=rgba.getchannel("A"))
+        else:
+            rgb = normalized.convert("RGB")
+
+    longest_edge = max(rgb.size)
+    if longest_edge > QWEN_REFERENCE_MAX_EDGE:
+        scale = QWEN_REFERENCE_MAX_EDGE / longest_edge
+        rgb = rgb.resize(
+            (
+                max(1, round(rgb.width * scale)),
+                max(1, round(rgb.height * scale)),
+            ),
+            Image.Resampling.LANCZOS,
+        )
+
+    current = rgb
+    while True:
+        for quality in QWEN_REFERENCE_JPEG_QUALITIES:
+            output = io.BytesIO()
+            current.save(
+                output,
+                format="JPEG",
+                quality=quality,
+                optimize=True,
+                progressive=True,
+            )
+            encoded = base64.b64encode(output.getvalue()).decode("ascii")
+            data_url = f"data:image/jpeg;base64,{encoded}"
+            if len(data_url.encode("ascii")) <= QWEN_MAX_REFERENCE_DATA_URL_BYTES:
+                return data_url
+
+        if min(current.size) <= QWEN_REFERENCE_MIN_EDGE:
+            raise ValueError("Reference image cannot fit the safe transport limit")
+        current = current.resize(
+            (
+                max(QWEN_REFERENCE_MIN_EDGE, round(current.width * 0.85)),
+                max(QWEN_REFERENCE_MIN_EDGE, round(current.height * 0.85)),
+            ),
+            Image.Resampling.LANCZOS,
+        )
 
 
 def _qwen_result_urls(data: dict) -> list[str]:
@@ -406,6 +519,16 @@ def _call_qwen_image(db: Session, task: ImageGenerationTask) -> list[bytes]:
             "watermark": False,
         },
     }
+    request_content = json.dumps(
+        request_body,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    if len(request_content) > QWEN_MAX_REQUEST_BODY_BYTES:
+        raise ProviderFailedError(
+            "Qwen image request exceeds the safe transport limit"
+        )
+    started_at = time.perf_counter()
     try:
         response = httpx.post(
             endpoint,
@@ -413,15 +536,41 @@ def _call_qwen_image(db: Session, task: ImageGenerationTask) -> list[bytes]:
                 "Authorization": f"Bearer {settings.image_gen_api_key}",
                 "Content-Type": "application/json",
             },
-            json=request_body,
+            content=request_content,
             timeout=httpx.Timeout(60.0, connect=10.0),
         )
         response.raise_for_status()
         data = response.json()
     except httpx.TimeoutException as exc:
         raise ProviderTimeoutError("Qwen image request timed out") from exc
-    except (httpx.HTTPError, ValueError) as exc:
-        raise ProviderFailedError("Qwen image request failed") from exc
+    except httpx.ProxyError as exc:
+        elapsed_ms = round((time.perf_counter() - started_at) * 1000)
+        raise ProviderFailedError(
+            f"Qwen image request failed: type=proxy_error elapsed_ms={elapsed_ms}"
+        ) from exc
+    except httpx.ConnectError as exc:
+        elapsed_ms = round((time.perf_counter() - started_at) * 1000)
+        raise ProviderFailedError(
+            f"Qwen image request failed: type=connect_error elapsed_ms={elapsed_ms}"
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        elapsed_ms = round((time.perf_counter() - started_at) * 1000)
+        raise ProviderFailedError(
+            _provider_http_diagnostic(exc, elapsed_ms=elapsed_ms)
+        ) from exc
+    except httpx.HTTPError as exc:
+        elapsed_ms = round((time.perf_counter() - started_at) * 1000)
+        error_type = _safe_diagnostic_value(type(exc).__name__) or "HTTPError"
+        raise ProviderFailedError(
+            "Qwen image request failed: "
+            f"type=http_error exception={error_type} elapsed_ms={elapsed_ms}"
+        ) from exc
+    except ValueError as exc:
+        elapsed_ms = round((time.perf_counter() - started_at) * 1000)
+        raise ProviderFailedError(
+            "Qwen image request failed: "
+            f"type=response_parse_error elapsed_ms={elapsed_ms}"
+        ) from exc
 
     urls = _qwen_result_urls(data)
     payloads: list[bytes] = []
