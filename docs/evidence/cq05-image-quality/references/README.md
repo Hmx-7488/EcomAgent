@@ -1,7 +1,8 @@
 # C-Q05 原创参考图执行记录
 
 > 执行日期：2026-07-29
-> 状态：三张参考图已通过产品负责人复核；第 1 次真实 Qwen 调用失败后按规则停止。
+>
+> 状态：三张参考图已通过产品负责人复核并用于最终六组验收；C-Q05 已通过。
 
 ## 授权与来源说明
 
@@ -129,12 +130,17 @@ Avoid: promotional copy, decorative typography, distorted zippers, impossible ge
 | ZN-DB-002 | ChatGPT Web 内置图像生成 | PASS / PASS / PASS | 产品负责人复核通过 |
 | ZN-VB-003 | ChatGPT Web 内置图像生成（替换版本） | PASS / PASS / PASS | 产品负责人复核通过；旧版因吸尘器吸嘴歧义被拒绝 |
 
-三张当前参考图均已落盘、通过 Pillow 完整性核验并通过产品负责人复核。真实调用
-已在第 1 次失败后依规则停止，未生成可供逐图复核的结果，因此 `C-Q05` 继续保持
-`BLOCKED`，不得标记为 `PASS`。
+三张当前参考图均已落盘、通过 Pillow 完整性核验并通过产品负责人复核。2026-07-30
+首次真实调用失败及中止记录继续作为历史证据保留；后续经逐批明确授权完成 Task 6
+至 11，并使用 Reference Asset 9、13、14 生成六组、18 张正式样本。最终结果见
+[`../CQ05最终验收报告_2026-07-31.md`](../CQ05最终验收报告_2026-07-31.md)。
 
 ## 发布与配置前置状态
 
-- Public 仓库 `Hmx-7488/EcomAgent` 的远端 `main` 与本地技术基线 `0b63bcef7c79493b7ded4678d8f044d989e5d923` 一致。
-- 百炼控制台确认地域为华北 2（北京），当前默认 Workspace 唯一。
-- 本机 `backend/.env` 已切换到该 Workspace 专属 HTTPS API Host；Key 存在且配置替换前后未改变。本文档不记录 Key、Workspace ID 或完整地址。
+- C-Q05 受验执行代码 Commit 为
+  `0e54ac5a0fb2dd7fe28e7ebcf5a8d66d827df4d1`。
+- 百炼地域为华北 2（北京），图片 Provider 使用同一 Workspace 的原生 `/api/v1`
+  地址和图片专用 Key。
+- 曾出现在截图中的相关 Key 已撤销或停用；当前 Key、Workspace ID 和完整地址均未
+  进入仓库、聊天或正式证据。
+- 产品总控最终判定 C-Q05 为 `PASS`；P0 总体为 `PASS`，P1 继续 `LOCKED`。
