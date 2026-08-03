@@ -12,7 +12,6 @@ export interface SKUItem {
   price: number;
   image_url?: string;
   status?: string;
-  costs?: CostFields;
   inventory?: {
     stock_quantity: number;
     locked_quantity: number;
@@ -21,14 +20,27 @@ export interface SKUItem {
 }
 
 export interface CostFields {
-  purchase_cost?: number;
-  packaging_cost?: number;
-  shipping_subsidy?: number;
-  platform_fee?: number;
-  promotion_allocation?: number;
-  after_sales_loss?: number;
+  purchase_cost?: number | null;
+  packaging_cost?: number | null;
+  shipping_subsidy?: number | null;
+  platform_fee?: number | null;
+  marketing_allocation?: number | null;
+  after_sales_loss?: number | null;
 }
-export interface MarginResult { status: "ready" | "pending_confirmation"; estimated_gross_profit: number | null; estimated_gross_margin_rate: number | null; total_cost?: number; }
+export interface CostRead extends CostFields {
+  sku_id: number;
+  completeness: string[];
+  status: "ready" | "pending_confirmation";
+}
+export interface MarginResult {
+  sku_id: number;
+  sale_price: number;
+  costs: CostRead;
+  status: "ready" | "pending_confirmation";
+  estimated_gross_profit: number | null;
+  estimated_gross_margin_rate: number | null;
+  total_cost: number | null;
+}
 
 export interface ProductItem {
   id: number;
@@ -91,8 +103,9 @@ export const useProductStore = defineStore("product", () => {
   async function deleteProduct(id: number): Promise<void> {
     await apiClient.delete(`/products/${id}`);
   }
-  async function saveCosts(skuId: number, costs: CostFields): Promise<CostFields> {
-    const res = await apiClient.put(`/skus/${skuId}/costs`, costs); return res.data;
+  async function saveCosts(skuId: number, costs: CostFields): Promise<CostRead> {
+    const res = await apiClient.post(`/skus/${skuId}/costs`, costs);
+    return res.data;
   }
   async function getMargin(skuId: number): Promise<MarginResult> {
     const res = await apiClient.get(`/skus/${skuId}/margin`); return res.data;

@@ -80,4 +80,64 @@ describe("useProductStore", () => {
     expect(result.id).toBe(5);
     expect(result.name).toBe("新品");
   });
+
+  it("saves the six formal cost fields through POST", async () => {
+    const payload = {
+      purchase_cost: 30,
+      packaging_cost: 2,
+      shipping_subsidy: 5,
+      platform_fee: 4,
+      marketing_allocation: 3,
+      after_sales_loss: 1,
+    };
+    vi.mocked(apiClient.post).mockResolvedValueOnce({
+      data: {
+        sku_id: 31,
+        ...payload,
+        completeness: [],
+        status: "ready",
+      },
+    });
+
+    const store = useProductStore();
+    const result = await store.saveCosts(31, payload);
+
+    expect(apiClient.post).toHaveBeenCalledWith("/skus/31/costs", payload);
+    expect(apiClient.put).not.toHaveBeenCalledWith(
+      "/skus/31/costs",
+      expect.anything(),
+    );
+    expect(result.marketing_allocation).toBe(3);
+    expect(result).not.toHaveProperty("promotion_allocation");
+  });
+
+  it("reads persisted costs together with the backend margin facts", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: {
+        sku_id: 31,
+        sale_price: 100,
+        costs: {
+          sku_id: 31,
+          purchase_cost: 30,
+          packaging_cost: 2,
+          shipping_subsidy: 5,
+          platform_fee: 4,
+          marketing_allocation: 3,
+          after_sales_loss: 1,
+          completeness: [],
+          status: "ready",
+        },
+        total_cost: 45,
+        estimated_gross_profit: 55,
+        estimated_gross_margin_rate: 0.55,
+        status: "ready",
+      },
+    });
+
+    const result = await useProductStore().getMargin(31);
+
+    expect(apiClient.get).toHaveBeenCalledWith("/skus/31/margin");
+    expect(result.costs.marketing_allocation).toBe(3);
+    expect(result.status).toBe("ready");
+  });
 });

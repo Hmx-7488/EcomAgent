@@ -15,9 +15,9 @@ export const AUTH_LOGIN_URL = API_BASE_URL + AUTH_LOGIN_PATH;
 type MockProduct = Record<string, unknown> & { id: number; skus: Array<Record<string, unknown>> };
 const products: MockProduct[] = [
   {
-    id: 1, name: "可视折叠衣物收纳箱", category: "居家收纳", brand: "栖纳家居", status: "active",
+    id: 1, name: "可视折叠衣物收纳箱", category: "居家收纳", brand: "栖纳家居", status: "approved",
     description: "用于衣物分类收纳的 Demo 商品。", selling_points: "透明可视窗；双向拉链", created_at: "2026-07-21", updated_at: "2026-07-21",
-    skus: [{ id: 11, sku_name: "大号 100L", spec: "60×45×37cm", price: 79.9, costs: { purchase_cost: 30, packaging_cost: 2, shipping_subsidy: 5, platform_fee: 4, promotion_allocation: 3, after_sales_loss: 1 } }],
+    skus: [{ id: 11, sku_name: "大号 100L", spec: "60×45×37cm", price: 79.9, costs: { purchase_cost: 30, packaging_cost: 2, shipping_subsidy: 5, platform_fee: 4, marketing_allocation: 3, after_sales_loss: 1 } }],
   },
 ];
 
@@ -30,7 +30,7 @@ function mockError(config: AxiosRequestConfig, status: number, code: string, mes
 function margin(sku: Record<string, unknown>) {
   const price = Number(sku.price);
   const costs = (sku.costs || {}) as Record<string, unknown>;
-  const fields = ["purchase_cost", "packaging_cost", "shipping_subsidy", "platform_fee", "promotion_allocation", "after_sales_loss"];
+  const fields = ["purchase_cost", "packaging_cost", "shipping_subsidy", "platform_fee", "marketing_allocation", "after_sales_loss"];
   if (!Number.isFinite(price) || price <= 0 || fields.some((key) => costs[key] === null || costs[key] === undefined || costs[key] === "")) {
     return { status: "pending_confirmation", estimated_gross_profit: null, estimated_gross_margin_rate: null };
   }
@@ -64,8 +64,29 @@ async function mockAdapter(config: AxiosRequestConfig) {
   if (skuMatch) {
     const sku = products.flatMap((item) => item.skus).find((item) => Number(item.id) === Number(skuMatch[1]));
     if (!sku) return mockError(config, 404, "SKU_NOT_FOUND", "SKU 不存在");
-    if (skuMatch[2] === "costs" && ["put", "post"].includes(method)) { sku.costs = body; return response(config, sku.costs); }
-    if (skuMatch[2] === "margin" && method === "get") return response(config, margin(sku));
+    if (skuMatch[2] === "costs" && method === "post") {
+      sku.costs = body;
+      return response(config, {
+        sku_id: Number(skuMatch[1]),
+        ...sku.costs as Record<string, unknown>,
+        completeness: [],
+        status: "ready",
+      });
+    }
+    if (skuMatch[2] === "margin" && method === "get") {
+      const result = margin(sku);
+      return response(config, {
+        sku_id: Number(skuMatch[1]),
+        sale_price: Number(sku.price),
+        costs: {
+          sku_id: Number(skuMatch[1]),
+          ...sku.costs as Record<string, unknown>,
+          completeness: [],
+          status: result.status,
+        },
+        ...result,
+      });
+    }
   }
   return mockError(config, 404, "API_NOT_AVAILABLE", "Mock 中未实现此接口");
 }
