@@ -172,7 +172,7 @@ async function request<T>(
 
 type ApiContentVersion = {
   version_no: number;
-  payload: Record<string, string>;
+  payload: Record<string, unknown>;
   provider: string;
   model_name?: string;
   task_status: string;
@@ -189,6 +189,10 @@ type ApiContentPackage = {
   updated_at: string;
   versions: ApiContentVersion[];
 };
+function contentText(payload: Record<string, unknown>, field: string) {
+  const value = payload[field];
+  return typeof value === "string" ? value.trim() : "";
+}
 function contentFromApi(item: ApiContentPackage): ContentPackage {
   const version = item.versions[item.versions.length - 1];
   const payload = version?.payload || {};
@@ -197,13 +201,13 @@ function contentFromApi(item: ApiContentPackage): ContentPackage {
     product_id: item.product_id,
     fact_version: item.source_fact_version,
     input_summary: item.source_summary,
-    title: payload.title || "",
-    selling_points: payload.selling_points || "",
-    detail: payload.detail || "",
-    parameters: payload.parameters || "",
-    faq: payload.faq || "",
-    presale_script: payload.sales_script || "",
-    promotion_material: payload.promo_material || "",
+    title: contentText(payload, "title"),
+    selling_points: contentText(payload, "selling_points"),
+    detail: contentText(payload, "detail"),
+    parameters: contentText(payload, "parameters"),
+    faq: contentText(payload, "faq"),
+    presale_script: contentText(payload, "sales_script"),
+    promotion_material: contentText(payload, "promo_material"),
     version: item.current_version_no,
     status: item.status,
     provider: version?.provider,
@@ -212,6 +216,29 @@ function contentFromApi(item: ApiContentPackage): ContentPackage {
     error_summary: version?.error_summary,
     updated_at: item.updated_at,
   };
+}
+export function contentGenerationError(item: ContentPackage) {
+  const statusMessages: Record<string, string> = {
+    no_key: "文本生成服务未配置，未生成完整内容包。",
+    timeout: "内容生成超时，未生成完整内容包。",
+    failed: "内容生成失败，未生成完整内容包。",
+    field_missing: "内容生成结果字段不完整。",
+  };
+  if (item.task_status !== "completed") {
+    return statusMessages[item.task_status || ""] || "内容生成未完成。";
+  }
+  const fields = [
+    item.title,
+    item.selling_points,
+    item.detail,
+    item.parameters,
+    item.faq,
+    item.presale_script,
+    item.promotion_material,
+  ];
+  return fields.every((value) => typeof value === "string" && value.trim())
+    ? undefined
+    : "内容生成结果字段不完整。";
 }
 function apiPayload(payload: Partial<ContentPackage>) {
   return {
@@ -297,7 +324,11 @@ export const m2Api = {
         await request<ApiContentPackage>(
           "post",
           `/content/packages/${id}/generate`,
-          { package_id: id },
+          {
+            package_id: id,
+            content_type: "package",
+            platform: "general",
+          },
         ),
       );
     }

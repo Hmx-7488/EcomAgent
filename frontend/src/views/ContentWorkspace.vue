@@ -10,7 +10,7 @@
         <div class="panel editor"><div class="editor-head"><div><b>内容版本 v{{ selected.version }}</b><small>最后更新 {{ selected.updated_at }}</small></div><div class="actions"><el-button :loading="working" @click="generate" :disabled="selected.status==='approved'">生成</el-button><el-button v-if="selected.status==='draft'||selected.status==='rejected'" type="primary" @click="act('submit')">提交审批</el-button><el-button v-if="selected.status==='approved'" type="success" @click="act('export')">导出 Markdown</el-button></div></div>
           <el-alert v-if="selected.status==='approved'" title="已批准版本不可编辑；如需修改，请新建内容包版本。" type="success" :closable="false" />
           <el-alert v-else-if="selected.status==='rejected'" :title="`已拒绝：${selected.rejection_reason || '未记录原因'}`" type="error" :closable="false" />
-          <el-tabs v-model="tab" class="content-tabs"><el-tab-pane v-for="field in fields" :key="field.key" :label="field.label" :name="field.key"><el-input v-model="draft[field.key]" type="textarea" :autosize="{minRows:6,maxRows:12}" :disabled="selected.status==='approved'" @blur="save" /></el-tab-pane></el-tabs>
+          <el-tabs v-model="tab" class="content-tabs"><el-tab-pane v-for="field in fields" :key="field.key" :label="field.label" :name="field.key"><el-input v-model="draft[field.key]" type="textarea" :autosize="{minRows:6,maxRows:12}" :disabled="selected.status==='approved'||saving" @blur="save" /></el-tab-pane></el-tabs>
           <div class="version-note"><b>版本对比</b><span>当前版本以 {{ selected.fact_version }} 为输入快照；历史已批准版本不会被覆盖。</span></div>
         </div>
       </main>
@@ -22,11 +22,17 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { errorMessage } from "../api/client";
-import { m2Api, type ApprovalStatus, type ContentPackage, type ProductOption } from "../api/milestone2";
+import { contentGenerationError, m2Api, type ApprovalStatus, type ContentPackage, type ProductOption } from "../api/milestone2";
 const packages=ref<ContentPackage[]>([]), selected=ref<ContentPackage>(), productOptions=ref<ProductOption[]>([]), selectedProductId=ref<number>(), loading=ref(false), productLoading=ref(false), working=ref(false), error=ref(""), tab=ref("title");
 const fields = [{key:"title",label:"标题"},{key:"selling_points",label:"卖点"},{key:"detail",label:"详情"},{key:"parameters",label:"参数说明"},{key:"faq",label:"FAQ"},{key:"presale_script",label:"售前话术"},{key:"promotion_material",label:"图文推广素材"}] as const;
-const draft = reactive<Record<(typeof fields)[number]["key"], string>>({title:"",selling_points:"",detail:"",parameters:"",faq:"",presale_script:"",promotion_material:""});
-function loadDraft(item?: ContentPackage){ if(!item)return; fields.forEach(f=>draft[f.key]=item[f.key]); }
+type ContentFieldKey = (typeof fields)[number]["key"];
+type ContentSnapshot = Record<ContentFieldKey, string>;
+function emptySnapshot():ContentSnapshot{return {title:"",selling_points:"",detail:"",parameters:"",faq:"",presale_script:"",promotion_material:""}}
+function snapshotFrom(source?:Partial<Record<ContentFieldKey,unknown>>):ContentSnapshot{const snapshot=emptySnapshot();fields.forEach(field=>{const value=source?.[field.key];snapshot[field.key]=typeof value==="string"?value:""});return snapshot}
+function snapshotsEqual(left:ContentSnapshot,right:ContentSnapshot){return fields.every(field=>left[field.key]===right[field.key])}
+const draft = reactive<ContentSnapshot>(emptySnapshot()), saving=ref(false);
+let persistedSnapshot=emptySnapshot();
+function loadDraft(item?: ContentPackage){const snapshot=snapshotFrom(item);fields.forEach(field=>draft[field.key]=snapshot[field.key]);persistedSnapshot=snapshot}
 watch(selected, loadDraft, {immediate:true});
 function statusText(status:ApprovalStatus){return ({draft:"草稿",submitted:"待审批",approved:"已批准",rejected:"已拒绝"})[status]}
 function tagType(status:ApprovalStatus){return ({draft:"info",submitted:"warning",approved:"success",rejected:"danger"})[status] as "info"|"warning"|"success"|"danger"}
@@ -35,9 +41,9 @@ function productName(productId:number){return productNames.value.get(productId)|
 async function loadProducts(){productLoading.value=true;error.value="";try{productOptions.value=await m2Api.listApprovedProducts()}catch(e){error.value=errorMessage(e)}finally{productLoading.value=false}}
 async function refresh(){loading.value=true;try{const selectedId=selected.value?.id;packages.value=await m2Api.listPackages();selected.value=packages.value.find(item=>item.id===selectedId)||packages.value[0]}catch(e){error.value=errorMessage(e)}finally{loading.value=false}}
 async function create(){if(!selectedProductId.value)return;working.value=true;error.value="";try{const item=await m2Api.createPackage(selectedProductId.value);await refresh();selected.value=packages.value.find(p=>p.id===item.id);ElMessage.success("已创建内容包草稿")}catch(e){error.value=errorMessage(e)}finally{working.value=false}}
-async function save(){if(!selected.value||selected.value.status==="approved")return;try{const updated=await m2Api.updatePackage(selected.value.id,draft);replace(updated)}catch(e){error.value=errorMessage(e)}}
-function replace(item:ContentPackage){packages.value=packages.value.map(p=>p.id===item.id?item:p);selected.value=item;}
-async function generate(){if(!selected.value)return;working.value=true;try{replace(await m2Api.generatePackage(selected.value.id));ElMessage.success("内容生成任务已完成")}catch(e){error.value=errorMessage(e)}finally{working.value=false}}
+async function save(){const item=selected.value;if(!item||item.status==="approved"||saving.value)return;const requestSnapshot=snapshotFrom(draft);if(snapshotsEqual(requestSnapshot,persistedSnapshot))return;saving.value=true;error.value="";try{const updated=await m2Api.updatePackage(item.id,requestSnapshot);replace(updated)}catch(e){error.value=errorMessage(e)}finally{saving.value=false}}
+function replace(item:ContentPackage){packages.value=packages.value.map(p=>p.id===item.id?item:p);selected.value=item;loadDraft(item)}
+async function generate(){if(!selected.value)return;working.value=true;error.value="";try{const generated=await m2Api.generatePackage(selected.value.id);replace(generated);const generationError=contentGenerationError(generated);if(generationError){error.value=generationError;return}ElMessage.success("内容生成任务已完成")}catch(e){error.value=errorMessage(e)}finally{working.value=false}}
 async function act(action:"submit"|"export"){if(!selected.value)return;working.value=true;try{replace(await m2Api.packageAction(selected.value.id,action));ElMessage.success(action==="export"?"已导出 Markdown 并记录审计":"已提交管理员审批")}catch(e){error.value=errorMessage(e)}finally{working.value=false}}
 onMounted(()=>Promise.all([loadProducts(),refresh()]));
 </script>

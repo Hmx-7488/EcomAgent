@@ -10,6 +10,61 @@ from ..core.config import settings
 
 logger = logging.getLogger(__name__)
 
+PACKAGE_CONTENT_FIELDS = (
+    "title",
+    "selling_points",
+    "detail",
+    "parameters",
+    "faq",
+    "sales_script",
+    "promo_material",
+)
+PACKAGE_CONTENT_ERROR = "Provider response did not contain complete package content"
+
+
+def _normalize_faq(value: object) -> str:
+    if isinstance(value, str):
+        normalized = value.strip()
+        if normalized:
+            return normalized
+        raise ValueError(PACKAGE_CONTENT_ERROR)
+    if not isinstance(value, list) or not value:
+        raise ValueError(PACKAGE_CONTENT_ERROR)
+
+    entries = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError(PACKAGE_CONTENT_ERROR)
+        question = item.get("q")
+        answer = item.get("a")
+        if not isinstance(question, str) or not isinstance(answer, str):
+            raise ValueError(PACKAGE_CONTENT_ERROR)
+        question = question.strip()
+        answer = answer.strip()
+        if not question or not answer:
+            raise ValueError(PACKAGE_CONTENT_ERROR)
+        entries.append(f"Q：{question}\nA：{answer}")
+    return "\n\n".join(entries)
+
+
+def _normalize_package_content(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise ValueError(PACKAGE_CONTENT_ERROR)
+
+    normalized = {}
+    for field in PACKAGE_CONTENT_FIELDS:
+        field_value = value.get(field)
+        if field == "faq":
+            normalized[field] = _normalize_faq(field_value)
+            continue
+        if not isinstance(field_value, str):
+            raise ValueError(PACKAGE_CONTENT_ERROR)
+        field_value = field_value.strip()
+        if not field_value:
+            raise ValueError(PACKAGE_CONTENT_ERROR)
+        normalized[field] = field_value
+    return normalized
+
 
 def _get_qwen_response(messages: list[dict], max_tokens: int = 2048) -> str:
     """Call Qwen via DashScope API and return the text response."""
@@ -92,6 +147,30 @@ def generate_product_content(
         )
 
     prompts = {
+        "package": f"""你是一个电商内容生成专家。请基于已提供的商品事实，一次生成完整内容包。
+
+商品名称：{product_name}
+类目：{category}
+品牌：{brand or '无'}
+商品描述：{description or '无'}
+现有卖点：{selling_points or '无'}
+参数：{parameters_json or '{}'}
+目标平台：{platform}
+风格要求：{style_hint or '专业、准确、适合通用货架电商'}
+
+只返回一个 JSON 对象，并且只包含以下七个字段：
+{{
+  "title": "完整商品标题",
+  "selling_points": "核心卖点文本",
+  "detail": "商品详情文本",
+  "parameters": "参数说明文本",
+  "faq": "Q：问题\\nA：回答",
+  "sales_script": "售前话术文本",
+  "promo_material": "图文推广素材文本"
+}}
+
+七个字段必须全部存在，且每个值都必须是非空字符串。不得返回其他字段或附加解释。""",
+
         "title": f"""你是一个电商文案专家。请为以下商品生成标题和短标题。
 
 商品名称：{product_name}
@@ -167,6 +246,9 @@ def generate_product_content(
     except json.JSONDecodeError:
         logger.warning("LLM response was not valid JSON, using raw text")
         result = {"raw_output": raw}
+
+    if content_type == "package":
+        return _normalize_package_content(result)
 
     result["product_name"] = product_name
     result["category"] = category

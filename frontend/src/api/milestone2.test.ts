@@ -9,6 +9,50 @@ vi.mock("./client", () => ({
 
 import { m2Api, parseResultAssetIds } from "./milestone2";
 
+const completePayload = {
+  title: "完整标题",
+  selling_points: "完整卖点",
+  detail: "完整详情",
+  parameters: "完整参数",
+  faq: "Q：问题\nA：回答",
+  sales_script: "完整售前话术",
+  promo_material: "完整推广素材",
+};
+
+function contentPackageResponse(
+  taskStatus = "completed",
+  payload: Record<string, unknown> = completePayload,
+) {
+  return {
+    id: 51,
+    product_id: 5,
+    source_fact_version: "product-5:v1",
+    source_summary: "approved facts",
+    status: "draft",
+    current_version_no: 7,
+    updated_at: "2026-08-03T10:00:00Z",
+    versions: [
+      {
+        version_no: 7,
+        payload,
+        provider: "qwen",
+        model_name: "qwen-plus",
+        task_status: taskStatus,
+        error_summary:
+          taskStatus === "completed" ? undefined : "安全失败摘要",
+        created_at: "2026-08-03T10:00:00Z",
+      },
+    ],
+  };
+}
+
+async function generationError(item: unknown) {
+  const contract = (await import("./milestone2")) as unknown as {
+    contentGenerationError: (value: unknown) => string | undefined;
+  };
+  return contract.contentGenerationError(item);
+}
+
 function apiResponse(data: unknown) {
   return Promise.resolve({ data });
 }
@@ -143,5 +187,89 @@ describe("M2 real backend contract", () => {
         url: "/images/assets/3",
       }),
     );
+  });
+
+  it("sends one explicit complete-package generation request and maps all seven fields", async () => {
+    requestMock.mockImplementationOnce(() =>
+      apiResponse(
+        contentPackageResponse("completed", {
+          ...completePayload,
+          short_title: "must be ignored",
+          product_name: "must be ignored",
+        }),
+      ),
+    );
+
+    const generated = await m2Api.generatePackage(51);
+
+    expect(requestMock).toHaveBeenCalledTimes(1);
+    expect(requestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "post",
+        url: "/content/packages/51/generate",
+        data: {
+          package_id: 51,
+          content_type: "package",
+          platform: "general",
+        },
+      }),
+    );
+    expect(generated).toMatchObject({
+      title: completePayload.title,
+      selling_points: completePayload.selling_points,
+      detail: completePayload.detail,
+      parameters: completePayload.parameters,
+      faq: completePayload.faq,
+      presale_script: completePayload.sales_script,
+      promotion_material: completePayload.promo_material,
+      task_status: "completed",
+    });
+    expect(generated).not.toHaveProperty("short_title");
+    expect(generated).not.toHaveProperty("product_name");
+  });
+
+  it("keeps historical incomplete versions loadable with empty display fields", async () => {
+    requestMock.mockImplementationOnce(() =>
+      apiResponse({
+        items: [contentPackageResponse("completed", { title: "历史标题" })],
+      }),
+    );
+
+    const [historical] = await m2Api.listPackages();
+
+    expect(historical.title).toBe("历史标题");
+    expect(historical.selling_points).toBe("");
+    expect(historical.detail).toBe("");
+    expect(historical.parameters).toBe("");
+    expect(historical.faq).toBe("");
+    expect(historical.presale_script).toBe("");
+    expect(historical.promotion_material).toBe("");
+  });
+
+  it.each(["no_key", "timeout", "failed", "field_missing"])(
+    "does not classify %s as a successful generation",
+    async (taskStatus) => {
+      requestMock.mockImplementationOnce(() =>
+        apiResponse(contentPackageResponse(taskStatus)),
+      );
+
+      const generated = await m2Api.generatePackage(51);
+
+      expect(await generationError(generated)).toBeTruthy();
+      expect(requestMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("does not classify completed content with a missing field as successful", async () => {
+    const incomplete = { ...completePayload };
+    delete (incomplete as Partial<typeof completePayload>).promo_material;
+    requestMock.mockImplementationOnce(() =>
+      apiResponse(contentPackageResponse("completed", incomplete)),
+    );
+
+    const generated = await m2Api.generatePackage(51);
+
+    expect(await generationError(generated)).toContain("不完整");
+    expect(requestMock).toHaveBeenCalledTimes(1);
   });
 });

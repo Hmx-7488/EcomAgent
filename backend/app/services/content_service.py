@@ -12,7 +12,7 @@ from ..models.content import (AuditEvent, ApprovalRecord, ContentPackage, Conten
                               Conversation, GeneratedContent, ToolCallLog)
 from ..models.product import Product, SKU
 from ..models.user import User
-from .llm_service import generate_product_content
+from .llm_service import PACKAGE_CONTENT_FIELDS, generate_product_content
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,24 @@ class ProviderNoKeyError(RuntimeError): pass
 class ProviderTimeoutError(RuntimeError): pass
 class ProviderFailedError(RuntimeError): pass
 class ProviderFieldMissingError(RuntimeError): pass
+
+PACKAGE_CONTENT_ERROR = "Provider response has incomplete package content"
+
+
+def _validated_package_payload(payload: object) -> dict[str, str]:
+    """Keep only the seven formal fields after a defensive domain check."""
+    if not isinstance(payload, dict):
+        raise ProviderFieldMissingError(PACKAGE_CONTENT_ERROR)
+    normalized = {}
+    for field in PACKAGE_CONTENT_FIELDS:
+        value = payload.get(field)
+        if not isinstance(value, str):
+            raise ProviderFieldMissingError(PACKAGE_CONTENT_ERROR)
+        value = value.strip()
+        if not value:
+            raise ProviderFieldMissingError(PACKAGE_CONTENT_ERROR)
+        normalized[field] = value
+    return normalized
 
 def generate_package_with_provider(product: Product, content_type: str, platform: str, style_hint: Optional[str]) -> dict:
     """Injectable provider boundary. Tests replace this function; it never stores credentials."""
@@ -222,14 +240,18 @@ def generate_package(db: Session, actor: User, package: ContentPackage, content_
     status, payload, error = "completed", {}, None
     try:
         payload = generate_package_with_provider(product=product, content_type=content_type, platform=platform, style_hint=style_hint)
-        if not payload or any(value is None for value in payload.values()):
+        if content_type == "package":
+            payload = _validated_package_payload(payload)
+        elif not payload or any(value is None for value in payload.values()):
             raise ProviderFieldMissingError("Provider response has required fields missing")
     except ProviderNoKeyError as exc:
         status, error, provider = "no_key", str(exc), "none"
     except (ProviderTimeoutError, __import__("httpx").TimeoutException) as exc:
         status, error = "timeout", str(exc) or "Provider timed out"
     except (ProviderFieldMissingError, ValueError) as exc:
-        status, error = "field_missing", str(exc)
+        status = "field_missing"
+        error = PACKAGE_CONTENT_ERROR if content_type == "package" else str(exc)
+        payload = {}
     except (ProviderFailedError, Exception):
         status, error = "failed", "Provider failed"
     db.add(ContentVersion(package_id=package.id, version_no=package.current_version_no, payload_json=json.dumps(payload, ensure_ascii=False),
