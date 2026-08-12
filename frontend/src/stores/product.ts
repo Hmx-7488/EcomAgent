@@ -19,6 +19,12 @@ export interface SKUItem {
   };
 }
 
+export interface SKUMaintenanceFields {
+  sku_name: string;
+  spec?: string;
+  price: number;
+}
+
 export interface CostFields {
   purchase_cost?: number | null;
   packaging_cost?: number | null;
@@ -56,10 +62,19 @@ export interface ProductItem {
   skus: SKUItem[];
 }
 
+export interface ProductCategoryItem {
+  id: number;
+  name: string;
+  is_active: boolean;
+}
+
 export const useProductStore = defineStore("product", () => {
   const products = ref<ProductItem[]>([]);
   const total = ref(0);
   const loading = ref(false);
+  const categories = ref<ProductCategoryItem[]>([]);
+  const categoryTotal = ref(0);
+  const categoryLoading = ref(false);
 
   async function fetchProducts(page = 1, pageSize = 20) {
     loading.value = true;
@@ -77,6 +92,29 @@ export const useProductStore = defineStore("product", () => {
   async function getProduct(id: number): Promise<ProductItem> {
     const res = await apiClient.get(`/products/${id}`);
     return res.data;
+  }
+
+  async function listCategories(): Promise<ProductCategoryItem[]> {
+    categoryLoading.value = true;
+    try {
+      const res = await apiClient.get("/product-categories");
+      categories.value = res.data.items;
+      categoryTotal.value = res.data.total;
+      return categories.value;
+    } finally {
+      categoryLoading.value = false;
+    }
+  }
+
+  async function createCategory(name: string): Promise<ProductCategoryItem> {
+    const res = await apiClient.post("/product-categories", { name });
+    const created = res.data as ProductCategoryItem;
+    categories.value = [...categories.value, created].sort(
+      (left, right) =>
+        left.name.localeCompare(right.name) || left.id - right.id,
+    );
+    categoryTotal.value = categories.value.length;
+    return created;
   }
 
   async function createProduct(data: {
@@ -100,6 +138,22 @@ export const useProductStore = defineStore("product", () => {
     return res.data;
   }
 
+  async function createSku(
+    productId: number,
+    data: SKUMaintenanceFields,
+  ): Promise<SKUItem> {
+    const res = await apiClient.post(`/products/${productId}/skus`, data);
+    return res.data;
+  }
+
+  async function updateSku(
+    skuId: number,
+    data: SKUMaintenanceFields,
+  ): Promise<SKUItem> {
+    const res = await apiClient.put(`/products/skus/${skuId}`, data);
+    return res.data;
+  }
+
   async function deleteProduct(id: number): Promise<void> {
     await apiClient.delete(`/products/${id}`);
   }
@@ -115,10 +169,17 @@ export const useProductStore = defineStore("product", () => {
     products,
     total,
     loading,
+    categories,
+    categoryTotal,
+    categoryLoading,
     fetchProducts,
+    listCategories,
+    createCategory,
     getProduct,
     createProduct,
     updateProduct,
+    createSku,
+    updateSku,
     deleteProduct,
     saveCosts, getMargin,
   };

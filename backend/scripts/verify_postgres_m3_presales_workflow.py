@@ -59,6 +59,10 @@ def main() -> int:
             assert response.status_code == 200, response.text
             return {"Authorization": f"Bearer {response.json()['access_token']}"}
         operator, admin, service = login(0), login(1), login(2)
+        category = client.post(
+            "/api/product-categories", headers=admin, json={"name": "Demo"}
+        )
+        assert category.status_code in (201, 409), category.text
         product = client.post("/api/products", headers=operator, json={"name": f"M3 PostgreSQL {uuid.uuid4().hex[:8]}",
             "category": "Demo", "description": "Storage item for desktop use.",
             "parameters_json": json.dumps({"material": "PP", "color": "white", "package": "one item"}),

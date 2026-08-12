@@ -1,6 +1,14 @@
 ﻿"""Tests for product CRUD API."""
 
 
+from p0_acceptance.helpers import (
+    ROLE_CUSTOMER_SERVICE,
+    ROLE_OPERATOR_CONTENT,
+    TEST_PASSWORDS,
+    login_as,
+)
+
+
 class TestProductCreate:
     def test_create_product_success(self, client):
         payload = {
@@ -99,13 +107,43 @@ class TestSKUOperations:
         resp = client.delete(f"/api/products/skus/{sku_id}")
         assert resp.status_code == 204
 
-    def test_sku_price_zero_rejected(self, client):
-        """Price must be > 0 per Pydantic Field(gt=0)."""
+    def test_sku_price_zero_accepted_without_margin_result(self, client):
+        """Zero is a valid price, but estimated margin stays pending."""
         resp = client.post("/api/products", json={
             "name": "价格边界测试", "category": "测试",
             "skus": [{"sku_name": "免费版", "price": 0}]
         })
-        assert resp.status_code == 422
+        assert resp.status_code == 201
+        sku = resp.json()["skus"][0]
+        assert sku["price"] == 0
+
+        margin = client.get(f"/api/skus/{sku['id']}/margin")
+        assert margin.status_code == 200
+        assert margin.json()["status"] == "pending_confirmation"
+        assert margin.json()["estimated_gross_profit"] is None
+        assert margin.json()["estimated_gross_margin_rate"] is None
+
+    def test_sku_price_can_be_updated_to_zero_without_margin_result(self, client):
+        """The SKU update contract accepts and persists an exact zero price."""
+        created = client.post("/api/products", json={
+            "name": "零价更新测试", "category": "测试",
+            "skus": [{"sku_name": "标准版", "price": 10}]
+        })
+        assert created.status_code == 201
+        sku_id = created.json()["skus"][0]["id"]
+
+        updated = client.put(
+            f"/api/products/skus/{sku_id}",
+            json={"price": 0},
+        )
+        assert updated.status_code == 200
+        assert updated.json()["price"] == 0
+
+        margin = client.get(f"/api/skus/{sku_id}/margin")
+        assert margin.status_code == 200
+        assert margin.json()["status"] == "pending_confirmation"
+        assert margin.json()["estimated_gross_profit"] is None
+        assert margin.json()["estimated_gross_margin_rate"] is None
 
     def test_sku_price_negative_rejected(self, client):
         """Negative prices must be rejected."""
@@ -173,6 +211,77 @@ class TestSKUUpdate:
             "sku_name": "尝试更新"
         })
         assert resp.status_code == 404
+
+
+class TestSKUMaintenanceRoles:
+    def test_operator_can_create_and_update_sku_facts(self, client):
+        product = client.post(
+            "/api/products",
+            json={"name": "SKU权限测试", "category": "测试", "skus": []},
+        )
+        assert product.status_code == 201
+        product_id = product.json()["id"]
+        operator = login_as(
+            client,
+            ROLE_OPERATOR_CONTENT,
+            TEST_PASSWORDS[ROLE_OPERATOR_CONTENT],
+        )
+
+        created = client.post(
+            f"/api/products/{product_id}/skus",
+            headers=operator,
+            json={"sku_name": "零价规格", "spec": "基础款", "price": 0},
+        )
+        assert created.status_code == 201
+        assert created.json()["price"] == 0
+
+        updated = client.put(
+            f"/api/products/skus/{created.json()['id']}",
+            headers=operator,
+            json={"sku_name": "零价升级规格", "spec": "升级款", "price": 0},
+        )
+        assert updated.status_code == 200
+        assert updated.json()["sku_name"] == "零价升级规格"
+        assert updated.json()["spec"] == "升级款"
+        assert updated.json()["price"] == 0
+
+    def test_customer_service_cannot_create_or_update_sku_facts(self, client):
+        product = client.post(
+            "/api/products",
+            json={
+                "name": "SKU越权测试",
+                "category": "测试",
+                "skus": [{"sku_name": "原规格", "price": 10}],
+            },
+        )
+        assert product.status_code == 201
+        product_id = product.json()["id"]
+        sku_id = product.json()["skus"][0]["id"]
+        service = login_as(
+            client,
+            ROLE_CUSTOMER_SERVICE,
+            TEST_PASSWORDS[ROLE_CUSTOMER_SERVICE],
+        )
+
+        create_response = client.post(
+            f"/api/products/{product_id}/skus",
+            headers=service,
+            json={"sku_name": "越权新增", "price": 0},
+        )
+        update_response = client.put(
+            f"/api/products/skus/{sku_id}",
+            headers=service,
+            json={"sku_name": "越权修改", "spec": "不应保存", "price": 0},
+        )
+
+        assert create_response.status_code == 403
+        assert update_response.status_code == 403
+
+        unchanged = client.get(f"/api/products/{product_id}")
+        assert unchanged.status_code == 200
+        assert len(unchanged.json()["skus"]) == 1
+        assert unchanged.json()["skus"][0]["sku_name"] == "原规格"
+        assert unchanged.json()["skus"][0]["price"] == 10
 
 
 class TestInventoryUpdate:

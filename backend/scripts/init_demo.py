@@ -23,7 +23,7 @@ import app.models.order  # noqa: F401
 from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.models.cost import SKUCost
-from app.models.product import Inventory, Product, SKU
+from app.models.product import Inventory, Product, ProductCategory, SKU
 from app.models.user import User
 
 MIN_PASSWORD_LENGTH = 12
@@ -68,7 +68,7 @@ def main() -> int:
     passwords = {variable: _required_password(variable) for _, _, variable in ACCOUNTS}
     payload = json.loads(_demo_file().read_text(encoding="utf-8"))
     session = SessionLocal()
-    created_users = created_products = created_skus = 0
+    created_users = created_categories = created_products = created_skus = 0
     try:
         for username, role, variable in ACCOUNTS:
             user = session.query(User).filter(User.username == username).first()
@@ -81,13 +81,25 @@ def main() -> int:
             user.password_hash = hash_password(passwords[variable])
 
         for source in payload.get("products", []):
+            category_name = source["category"].strip()
+            category = (
+                session.query(ProductCategory)
+                .filter(ProductCategory.name == category_name)
+                .first()
+            )
+            if category is None:
+                session.add(ProductCategory(name=category_name, is_active=True))
+                created_categories += 1
+            elif not category.is_active:
+                category.is_active = True
+
             product = session.query(Product).filter(Product.name == source["name"]).first()
             if product is None:
-                product = Product(name=source["name"], category=source["category"])
+                product = Product(name=source["name"], category=category_name)
                 session.add(product)
                 session.flush()
                 created_products += 1
-            product.category = source["category"]
+            product.category = category_name
             product.brand = source.get("brand")
             product.description = source.get("description")
             product.selling_points = "；".join(source.get("selling_points", []))
@@ -141,6 +153,7 @@ def main() -> int:
         result = {
             "status": "ready",
             "created_users": created_users,
+            "created_categories": created_categories,
             "created_products": created_products,
             "created_skus": created_skus,
             "roles": [role for _, role, _ in ACCOUNTS],

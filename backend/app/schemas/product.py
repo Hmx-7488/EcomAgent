@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- SKU & Inventory ---
@@ -30,7 +30,7 @@ class SKUCreate(BaseModel):
     color: Optional[str] = Field(None, max_length=64)
     size: Optional[str] = Field(None, max_length=64)
     spec: Optional[str] = Field(None, max_length=128)
-    price: float = Field(gt=0)
+    price: float = Field(ge=0, allow_inf_nan=False)
     image_url: Optional[str] = Field(None, max_length=512)
     inventory: Optional[InventoryCreate] = None
 
@@ -55,7 +55,7 @@ class SKUUpdate(BaseModel):
     color: Optional[str] = Field(None, max_length=64)
     size: Optional[str] = Field(None, max_length=64)
     spec: Optional[str] = Field(None, max_length=128)
-    price: Optional[float] = Field(None, gt=0)
+    price: Optional[float] = Field(None, ge=0, allow_inf_nan=False)
     image_url: Optional[str] = Field(None, max_length=512)
     status: Optional[str] = None
 
@@ -103,6 +103,28 @@ class ProductUpdate(BaseModel):
 
 class ProductListResponse(BaseModel):
     items: list[ProductRead]
+    total: int
+
+
+class ProductCategoryCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def trim_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class ProductCategoryRead(BaseModel):
+    id: int
+    name: str
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class ProductCategoryListResponse(BaseModel):
+    items: list[ProductCategoryRead]
     total: int
 
 

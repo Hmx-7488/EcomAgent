@@ -3,11 +3,17 @@
 from typing import Optional
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from ..models.product import Inventory, Product, SKU
+from ..models.content import AuditEvent
+from ..models.product import Inventory, Product, ProductCategory, SKU
+from ..models.user import User
 from ..schemas.product import (
     InventoryCreate,
+    ProductCategoryCreate,
+    ProductCategoryListResponse,
+    ProductCategoryRead,
     ProductCreate,
     ProductListResponse,
     ProductRead,
@@ -17,10 +23,69 @@ from ..schemas.product import (
 )
 
 
+class CategoryNotFoundError(ValueError):
+    """Requested category is not in the active first-level dictionary."""
+
+
+class CategoryExistsError(ValueError):
+    """Exact category name already exists."""
+
+
+def _active_category(db: Session, name: str) -> ProductCategory:
+    category = (
+        db.query(ProductCategory)
+        .filter(
+            ProductCategory.name == name.strip(),
+            ProductCategory.is_active.is_(True),
+        )
+        .first()
+    )
+    if category is None:
+        raise CategoryNotFoundError
+    return category
+
+
+def list_product_categories(db: Session) -> ProductCategoryListResponse:
+    query = db.query(ProductCategory).filter(ProductCategory.is_active.is_(True))
+    total = query.count()
+    items = query.order_by(ProductCategory.name.asc(), ProductCategory.id.asc()).all()
+    return ProductCategoryListResponse(
+        items=[ProductCategoryRead.model_validate(item) for item in items],
+        total=total,
+    )
+
+
+def create_product_category(
+    db: Session, data: ProductCategoryCreate, actor: User
+) -> ProductCategory:
+    if db.query(ProductCategory).filter(ProductCategory.name == data.name).first():
+        raise CategoryExistsError
+    category = ProductCategory(name=data.name, is_active=True)
+    db.add(category)
+    try:
+        db.flush()
+        db.add(
+            AuditEvent(
+                action="category.created",
+                target_type="product_category",
+                target_id=category.id,
+                actor_id=actor.id,
+                summary="Created first-level product category",
+            )
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise CategoryExistsError from exc
+    db.refresh(category)
+    return category
+
+
 def create_product(db: Session, data: ProductCreate) -> Product:
+    category = _active_category(db, data.category)
     product = Product(
         name=data.name,
-        category=data.category,
+        category=category.name,
         brand=data.brand,
         description=data.description,
         selling_points=data.selling_points,
@@ -84,6 +149,8 @@ def update_product(db: Session, product_id: int, data: ProductUpdate) -> Optiona
     if not product:
         return None
     update_data = data.model_dump(exclude_unset=True)
+    if "category" in update_data:
+        update_data["category"] = _active_category(db, update_data["category"]).name
     for key, value in update_data.items():
         setattr(product, key, value)
     db.commit()

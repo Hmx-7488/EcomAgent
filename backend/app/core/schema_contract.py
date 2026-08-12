@@ -8,7 +8,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
 
-EXPECTED_HEAD = "20260726_04"
+EXPECTED_HEAD = "20260811_05"
 
 
 def assert_schema_current(engine: Engine) -> None:

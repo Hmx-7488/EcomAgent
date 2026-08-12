@@ -108,9 +108,30 @@ def test_any_missing_required_cost_is_pending_confirmation(client, missing_field
     assert payload.get("estimated_gross_margin_rate") is None
 
 
-@pytest.mark.parametrize("price", [0, -0.01])
-def test_zero_or_negative_received_price_is_rejected(client, price):
-    """A non-positive received price must be a validation error, never division by zero."""
+def test_zero_received_price_is_persisted(client):
+    response = client.post(
+        PRODUCTS_PATH,
+        headers=_operator_headers(client),
+        json={"name": "零价商品", "category": "Demo", "skus": [{"sku_name": "SKU", "price": 0}]},
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["skus"][0]["price"] == 0
+
+
+def test_zero_received_price_can_update_an_existing_sku(client):
+    headers = _operator_headers(client)
+    sku_id = _create_product_with_sku(client, price=100, headers=headers)
+    response = client.put(
+        f"{PRODUCTS_PATH}/skus/{sku_id}",
+        headers=headers,
+        json={"price": 0},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["price"] == 0
+
+
+@pytest.mark.parametrize("price", [-0.01, -100])
+def test_negative_received_price_is_rejected_on_create(client, price):
     response = client.post(
         PRODUCTS_PATH,
         headers=_operator_headers(client),
@@ -118,6 +139,46 @@ def test_zero_or_negative_received_price_is_rejected(client, price):
     )
     assert response.status_code == 422
     assert error_detail(response)["code"] == "validation_error"
+
+
+def test_negative_received_price_is_rejected_on_update(client):
+    headers = _operator_headers(client)
+    sku_id = _create_product_with_sku(client, headers=headers)
+    response = client.put(
+        f"{PRODUCTS_PATH}/skus/{sku_id}", headers=headers, json={"price": -0.01}
+    )
+    assert response.status_code == 422
+    assert error_detail(response)["code"] == "validation_error"
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_received_price_is_rejected_by_create_and_update_schemas(value):
+    from pydantic import ValidationError
+
+    from app.schemas.product import SKUCreate, SKUUpdate
+
+    with pytest.raises(ValidationError):
+        SKUCreate(sku_name="SKU", price=value)
+    with pytest.raises(ValidationError):
+        SKUUpdate(price=value)
+
+
+def test_zero_price_with_complete_costs_keeps_total_but_not_margin(client):
+    headers = _operator_headers(client)
+    sku_id = _create_product_with_sku(client, price=0, headers=headers)
+    costs = _complete_cost_payload()
+    write = client.post(
+        SKU_COSTS_PATH.format(sku_id=sku_id), headers=headers, json=costs
+    )
+    assert write.status_code == 200, write.text
+
+    response = client.get(SKU_MARGIN_PATH.format(sku_id=sku_id), headers=headers)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["status"] == "pending_confirmation"
+    assert payload["total_cost"] == pytest.approx(sum(costs.values()))
+    assert payload["estimated_gross_profit"] is None
+    assert payload["estimated_gross_margin_rate"] is None
 
 
 @pytest.mark.parametrize("field", REQUIRED_COST_FIELDS)

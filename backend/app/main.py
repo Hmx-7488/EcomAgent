@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .api.content import router as content_router, router_audit
 from .api.images import router as image_router
 from .api.products import router as product_router
+from .api.product_categories import router as product_category_router
 from .api.auth import router as auth_router
 from .api.costs import router as cost_router
 from .api.customer_service import customer_router, service_router
@@ -115,6 +116,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 # Register routers
 app.include_router(product_router)
+app.include_router(product_category_router)
 app.include_router(content_router)
 app.include_router(router_audit)
 app.include_router(image_router)
@@ -123,17 +125,158 @@ app.include_router(cost_router)
 app.include_router(customer_router)
 app.include_router(service_router)
 
+
+_VALIDATION_FIELD_LABELS = {
+    "brand": "品牌",
+    "category": "商品类目",
+    "content": "消息内容",
+    "content_type": "内容类型",
+    "description": "商品描述",
+    "detail": "商品详情",
+    "faq": "FAQ",
+    "inventory": "库存信息",
+    "locked_quantity": "锁定库存数量",
+    "marketing_allocation": "推广分摊",
+    "after_sales_loss": "售后损失",
+    "packaging_cost": "包装成本",
+    "parameters": "参数说明",
+    "parameters_json": "商品参数",
+    "password": "密码",
+    "platform": "平台",
+    "platform_fee": "平台扣点",
+    "product_id": "商品",
+    "promo_material": "图文推广素材",
+    "purchase_cost": "采购成本",
+    "reference_asset_id": "参考图",
+    "reason": "原因",
+    "safety_stock": "安全库存数量",
+    "sales_script": "售前话术",
+    "selling_points": "卖点",
+    "shipping_rule_text": "发货规则",
+    "shipping_subsidy": "运费补贴",
+    "sku_name": "SKU名称",
+    "skus": "SKU列表",
+    "spec": "SKU规格",
+    "status": "状态",
+    "stock_quantity": "库存数量",
+    "style": "图片场景",
+    "title": "标题",
+    "username": "用户名",
+}
+_SUPPORTED_VALIDATION_TYPES = {
+    "missing",
+    "string_too_short",
+    "string_too_long",
+    "greater_than_equal",
+    "finite_number",
+    "float_parsing",
+    "int_parsing",
+    "list_type",
+    "dict_type",
+    "enum",
+    "literal_error",
+}
+_SAFE_VALIDATION_FALLBACK = {
+    "field": "请求参数",
+    "message": "输入内容不符合要求",
+}
+
+
+def _validation_field_name(request: Request, location: object) -> str | None:
+    if not isinstance(location, (list, tuple)):
+        return None
+    parts = [part for part in location if part not in {"body", "query", "path"}]
+    if not parts:
+        return None
+
+    path = getattr(getattr(request, "url", None), "path", "")
+    last = parts[-1]
+    if last == "name":
+        return "类目名称" if path.startswith("/api/product-categories") else "商品名称"
+    if last == "price":
+        base_name = "SKU零售价"
+    elif isinstance(last, str):
+        base_name = _VALIDATION_FIELD_LABELS.get(last)
+    else:
+        base_name = None
+    if base_name is None:
+        return None
+
+    try:
+        sku_position = parts.index("skus")
+    except ValueError:
+        return base_name
+    if sku_position + 1 >= len(parts):
+        return base_name
+    sku_index = parts[sku_position + 1]
+    if isinstance(sku_index, str) and sku_index.isdigit():
+        sku_index = int(sku_index)
+    if not isinstance(sku_index, int) or sku_index < 0:
+        return base_name
+    return f"第{sku_index + 1}个SKU{base_name.removeprefix('SKU')}"
+
+
+def _safe_validation_field(request: Request, error: object) -> dict[str, str]:
+    if not isinstance(error, dict):
+        return dict(_SAFE_VALIDATION_FALLBACK)
+    error_type = error.get("type")
+    field = _validation_field_name(request, error.get("loc"))
+    if error_type not in _SUPPORTED_VALIDATION_TYPES or field is None:
+        return dict(_SAFE_VALIDATION_FALLBACK)
+
+    if error_type == "missing":
+        message = (
+            "请选择有效的商品类目"
+            if field == "商品类目"
+            else f"请填写{field}"
+        )
+    elif error_type == "string_too_short":
+        message = (
+            "请选择有效的商品类目"
+            if field == "商品类目"
+            else f"{field}不能为空"
+        )
+    elif error_type == "string_too_long":
+        message = f"{field}长度超出限制"
+    elif error_type == "greater_than_equal":
+        message = (
+            f"{field}不能小于0"
+            if any(label in field for label in ("零售价", "成本", "库存"))
+            else f"{field}低于允许范围"
+        )
+    elif error_type == "finite_number":
+        message = f"{field}必须是有限数字"
+    elif error_type == "float_parsing":
+        message = f"{field}必须是有效数字"
+    elif error_type == "int_parsing":
+        message = f"{field}必须是整数"
+    elif error_type == "list_type":
+        message = f"{field}必须是列表"
+    elif error_type == "dict_type":
+        message = f"{field}格式不正确"
+    else:
+        message = f"{field}的取值不符合要求"
+    return {"field": field, "message": message}
+
+
 @app.exception_handler(RequestValidationError)
-async def validation_error_handler(_request, exc):
-    fields = []
-    for error in exc.errors():
-        safe_error = {key: value for key, value in error.items() if key != "ctx"}
-        if error.get("ctx"):
-            safe_error["ctx"] = {
-                key: str(value) for key, value in error["ctx"].items()
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    try:
+        fields = [_safe_validation_field(request, error) for error in exc.errors()]
+    except Exception:
+        fields = []
+    if not fields:
+        fields = [dict(_SAFE_VALIDATION_FALLBACK)]
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": {
+                "code": "validation_error",
+                "message": "请求参数校验失败",
+                "fields": fields,
             }
-        fields.append(safe_error)
-    return JSONResponse(status_code=422, content={"detail":{"code":"validation_error", "message":"Request validation failed", "fields":fields}})
+        },
+    )
 
 @app.exception_handler(HTTPException)
 async def http_error_handler(_request, exc):

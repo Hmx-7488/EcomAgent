@@ -21,6 +21,7 @@ from ..schemas.product import (
     SKUUpdate,
 )
 from ..services.product_service import (
+    CategoryNotFoundError,
     add_sku,
     create_product,
     delete_product,
@@ -37,7 +38,13 @@ router = APIRouter(prefix="/api/products", tags=["products"])
 
 @router.post("", response_model=ProductRead, status_code=201)
 def api_create_product(data: ProductCreate, db: Session = Depends(get_db), _=Depends(require_roles("admin", "operator_content"))):
-    return create_product(db, data)
+    try:
+        return create_product(db, data)
+    except CategoryNotFoundError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "category_not_found", "message": "Active category not found"},
+        ) from exc
 
 
 @router.get("", response_model=ProductListResponse | CustomerServiceProductListResponse)
@@ -72,7 +79,13 @@ def api_get_product(product_id: int, db: Session = Depends(get_db), user: User =
 
 @router.put("/{product_id}", response_model=ProductRead)
 def api_update_product(product_id: int, data: ProductUpdate, db: Session = Depends(get_db), _=Depends(require_roles("admin", "operator_content"))):
-    product = update_product(db, product_id, data)
+    try:
+        product = update_product(db, product_id, data)
+    except CategoryNotFoundError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "category_not_found", "message": "Active category not found"},
+        ) from exc
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return product

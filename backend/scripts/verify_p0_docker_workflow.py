@@ -164,6 +164,13 @@ def main() -> int:
 
             admin, operator, service = login(0), login(1), login(2)
 
+            category = client.post(
+                "/api/product-categories",
+                headers=admin,
+                json={"name": "Demo"},
+            )
+            assert category.status_code in (201, 409), category.text
+
             # Authentication and fixed-role access control.
             _assert_status(client.get("/api/products"), 401, "anonymous products")
             _assert_status(

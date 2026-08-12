@@ -69,6 +69,10 @@ def main() -> int:
             operator = login(operator_name, "m21-operator-password")
             admin = login(admin_name, "m21-admin-password")
             service = login(service_name, "m21-service-password")
+            category = client.post(
+                "/api/product-categories", headers=admin, json={"name": "Demo"}
+            )
+            assert category.status_code in (201, 409), category.text
             product = client.post(
                 "/api/products",
                 headers=operator,

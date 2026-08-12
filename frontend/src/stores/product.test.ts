@@ -140,4 +140,88 @@ describe("useProductStore", () => {
     expect(result.costs.marketing_allocation).toBe(3);
     expect(result.status).toBe("ready");
   });
+
+  it("loads the active category dictionary from the formal endpoint", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: {
+        items: [
+          { id: 2, name: "居家收纳", is_active: true },
+          { id: 5, name: "旅行收纳", is_active: true },
+        ],
+        total: 2,
+      },
+    });
+
+    const store = useProductStore();
+    const result = await store.listCategories();
+
+    expect(apiClient.get).toHaveBeenCalledWith("/product-categories");
+    expect(result).toEqual(store.categories);
+    expect(store.categories.map((item) => item.name)).toEqual([
+      "居家收纳",
+      "旅行收纳",
+    ]);
+    expect(store.categoryTotal).toBe(2);
+  });
+
+  it("creates one category and adds it to the selectable dictionary", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({
+      data: { id: 8, name: "桌面收纳", is_active: true },
+    });
+
+    const store = useProductStore();
+    const result = await store.createCategory("  桌面收纳  ");
+
+    expect(apiClient.post).toHaveBeenCalledWith("/product-categories", {
+      name: "  桌面收纳  ",
+    });
+    expect(result.name).toBe("桌面收纳");
+    expect(store.categories).toEqual([result]);
+    expect(store.categoryTotal).toBe(1);
+  });
+
+  it("creates a SKU through the selected product's formal endpoint", async () => {
+    const payload = {
+      sku_name: "加大款",
+      spec: "60 × 40 cm",
+      price: 0,
+    };
+    vi.mocked(apiClient.post).mockResolvedValueOnce({
+      data: {
+        id: 91,
+        product_id: 47,
+        ...payload,
+        status: "active",
+      },
+    });
+
+    const result = await useProductStore().createSku(47, payload);
+
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    expect(apiClient.post).toHaveBeenCalledWith("/products/47/skus", payload);
+    expect(result).toMatchObject({ id: 91, product_id: 47, price: 0 });
+  });
+
+  it("updates only the editable SKU facts through PUT", async () => {
+    const payload = {
+      sku_name: "升级款",
+      spec: "带盖",
+      price: 128,
+    };
+    vi.mocked(apiClient.put).mockResolvedValueOnce({
+      data: {
+        id: 31,
+        product_id: 3,
+        ...payload,
+        color: "米白",
+        status: "active",
+      },
+    });
+
+    const result = await useProductStore().updateSku(31, payload);
+
+    expect(apiClient.put).toHaveBeenCalledTimes(1);
+    expect(apiClient.put).toHaveBeenCalledWith("/products/skus/31", payload);
+    expect(result).toMatchObject({ id: 31, sku_name: "升级款", price: 128 });
+  });
 });

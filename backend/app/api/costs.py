@@ -111,12 +111,15 @@ def margin(
     }
     if view["status"] == "ready":
         total = sum(view[field] for field in FIELDS)
-        profit = sku.price - total
-        result.update(
-            total_cost=total,
-            estimated_gross_profit=profit,
-            estimated_gross_margin_rate=profit / sku.price,
-        )
+        result["total_cost"] = total
+        if sku.price > 0:
+            profit = sku.price - total
+            result.update(
+                estimated_gross_profit=profit,
+                estimated_gross_margin_rate=profit / sku.price,
+            )
+        else:
+            result["status"] = "pending_confirmation"
     _audit(
         db,
         actor,

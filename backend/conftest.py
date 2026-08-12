@@ -15,6 +15,7 @@ from sqlalchemy.pool import StaticPool
 from app.core.database import Base, get_db
 from app.main import app
 from app.models.user import User
+from app.models.product import ProductCategory
 from app.core.security import create_access_token, hash_password
 
 
@@ -53,6 +54,20 @@ def setup_database(monkeypatch, tmp_path):
     try:
         for username, (password, role) in TEST_USERS.items():
             seed_session.add(User(username=username, password_hash=hash_password(password), role=role))
+        for category in (
+            "Demo",
+            "服装",
+            "数码",
+            "食品",
+            "图书",
+            "美妆",
+            "鞋类",
+            "测试",
+            "居家收纳用品/衣物收纳",
+            "居家收纳用品/桌面收纳",
+            "居家收纳用品/旅行收纳",
+        ):
+            seed_session.add(ProductCategory(name=category, is_active=True))
         seed_session.commit()
     finally:
         seed_session.close()
